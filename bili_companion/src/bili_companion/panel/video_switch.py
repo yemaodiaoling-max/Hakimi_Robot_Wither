@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from bili_companion.cognition.gateway import CognitionUnavailable
+from bili_companion.cognition.gateway import CognitionUnavailable, hydrogen_mp4
 from bili_companion.cognition.live import BudgetPaused, CognitionEngine, _json_response
 from bili_companion.cognition.openai_provider import OpenAICompatibleClient
 from bili_companion.cognition.profile import amount, load_profile
@@ -95,7 +95,7 @@ def status():
     standby={}
     text_fallbacks={}
     pinned=config.get('qq_flash_low_profile')
-    preferred_qq=None if pinned else preferred_text_duty(config, 'qq')
+    preferred_qq=preferred_text_duty(config, 'qq')
     preferred_review=None if pinned else preferred_text_duty(config, 'review')
     preferred_review_haiku=preferred_text_duty(config, 'review_haiku') if not pinned and config.get(REVIEW_PROFILES['alternate']) else None
     configured_review=any(config.get(key) for key in REVIEW_PROFILES.values())
@@ -135,15 +135,19 @@ def status():
             text_fallbacks[role]=backups
     if pinned:
         from bili_companion.cognition.flash_duty import FLASH_LOW_MODEL
-        preferred_qq=preferred_review=(pinned, FLASH_LOW_MODEL)
+        preferred_review=(pinned, FLASH_LOW_MODEL)
+        preferred_qq=preferred_qq or preferred_review
         pinned_profile=read(Path(pinned))
         review_route=dict(primary=dict(model=FLASH_LOW_MODEL, provider=urlsplit(pinned_profile['base_url']).hostname,
                                        verification='verified', reasoning_effort='low'),
                           alternate=None, standby=None, active_slot='primary')
         for role in ('fast', 'reasoning'):
-            text_models[role]=FLASH_LOW_MODEL
+            text_models[role]=active['review' if role=='fast' else 'qq']
             text_fallbacks[role]=[]
             standby.pop(role,None)
+        if active['qq'] != FLASH_LOW_MODEL:
+            text_fallbacks['reasoning']=[FLASH_LOW_MODEL]
+            standby['reasoning']=FLASH_LOW_MODEL
     elif configured_review:
         review_route=dict(primary=None,alternate=None,standby=None,active_slot=None)
         for slot, preferred in (('primary',preferred_review),('alternate',preferred_review_haiku)):
@@ -201,11 +205,23 @@ def status():
         if native_model:
             on_standby = VideoDuty.standby_for(database, NATIVE_VIDEO_ROUTE, native_model)
             route_status = video_models.setdefault('video-observe', {})
-            route_status.update(preferred_model=native_model, preferred_provider='vertex',
-                fallback_model=primary, fallback_provider=host, on_standby=on_standby)
-            if not on_standby:
-                standby['video'] = primary
-                primary, host, media_mode = native_model, 'vertex', 'native_video'
+            relay_first = (config.get('video_hydrogen_profile') and
+                           hydrogen_mp4(route_status.get('preferred_model'),
+                                        read(Path(config['video_hydrogen_profile']))['media_mode']))
+            if relay_first:
+                if not on_standby:
+                    route_status.update(fallback_model=native_model, fallback_provider='vertex')
+                    if route_status['on_standby']:
+                        standby['video']=primary
+                        primary,host,media_mode=native_model,'vertex','native_video'
+                    else:
+                        standby['video']=native_model
+            else:
+                route_status.update(preferred_model=native_model, preferred_provider='vertex',
+                    fallback_model=primary, fallback_provider=host, on_standby=on_standby)
+                if not on_standby:
+                    standby['video'] = primary
+                    primary, host, media_mode = native_model, 'vertex', 'native_video'
             route_status['active_media_mode'] = media_mode
     history=PRIVATE/'last.json'
     vertex_backup=(route.get('fallback_enabled',True) if isinstance(route,dict) else bool(config.get('vertex_model')))

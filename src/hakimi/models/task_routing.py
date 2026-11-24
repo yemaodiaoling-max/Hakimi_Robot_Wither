@@ -10,9 +10,48 @@ ARGON = 'gemini-4-argon'
 CARBON = 'gemini-4-carbon'
 DEFAULT = {'mode': 'single', 'single_model': FLASH}
 
-_MODEL_REQUEST = re.compile(r'(?:请|麻烦|改用|换成|切到|调用|交给|让|用)\s*(?:gemini[- ]?4[- ]?)?carbon(?![a-z0-9_])|^\s*(?:@哈基米\s*)?carbon(?:[，,:：\s]|$)', re.I)
+_MODEL_REQUEST = re.compile(
+    r'(?:请|麻烦|改用|换成|切到|切换到?|调用|呼叫|召唤|交给|让|用|开启|启动|试试|问问)\s*(?:gemini[- ]?4[- ]?)?carbon(?![a-z0-9_])'
+    r'|^\s*(?:@哈基米\s*)?(?:gemini[- ]?4[- ]?)?carbon(?:[，,:：\s]|$)'
+    r'|(?:深度|深度度|深度模型|深度思考|deep reasoning|deep think).{0,8}(?:分析|思考|推导|看看|解答|模式)'
+    r'|(?:用|开|切到|开启).{0,4}(?:深度|推理|思考)模式',
+    re.I
+)
 _NO_CARBON = re.compile(r'(?:不用|别用|不要用|无需|别让|不要让)\s*(?:gemini[- ]?4[- ]?)?carbon', re.I)
-_DEPTH = re.compile(r'(?:仔细|深入|深度|详细|系统|严谨|研究|帮我|请).{0,6}(?:分析|论证|评估|比较|推演)|(?:提出|设计|构建|建立).{0,20}(?:理论|模型|实验方案|算法)|(?:梳理|制定|推荐).{0,12}学习(?:路径|路线)')
+
+_CASUAL_CHAT = re.compile(
+    r'^(?:[哈呵嘻嘿呀哇哦噢嗯额呐吧么呢嘛]|你好|早安|晚安|在吗|哈哈+|笑死|好玩|牛逼|太强了|确实|对啊|真的吗|怎么说|无语|离谱|救命|绷不住|好家伙|懂了|赞同|摸摸|抱抱|吃啥|外卖|睡觉|打卡)+[！!？?~～\s]*$'
+    r'|^(?:今天|明天|后天)?(?:天气|气温|温度|穿什么|吃什么|去哪吃|听什么歌|推荐电影|发个表情包|讲个笑话)\??$'
+    r'|(?:今天|明天|后天)?(?:天气|温度|穿什么|吃什么|听什么歌|发个表情包)',
+    re.I
+)
+
+_DEPTH = re.compile(
+    r'(?:仔细|深入|深度|详细|系统|严谨|研究|帮我|请).{0,6}(?:分析|论证|评估|比较|推演)'
+    r'|(?:提出|设计|构建|建立).{0,20}(?:理论|模型|实验方案|算法)'
+    r'|(?:梳理|制定|推荐).{0,12}学习(?:路径|路线)'
+)
+
+_MATH_PHYSICS = re.compile(
+    r'推导|证明|微积分|矩阵|概率论|代数几何|热力学|量子力学|电磁学|相对论|哈密顿|拉格朗日'
+    r'|微分方程|波动方程|薛定谔|纳维-斯托克斯|麦克斯韦|本征值|本征态|傅里叶|偏导|高斯积分'
+    r'|群论|流形|拓扑空间|泛函分析|对偶性|协变性',
+    re.I
+)
+
+_CS_ALGO_SYS = re.compile(
+    r'动态规划|二叉树|红黑树|平衡树|图论|最短路径|拓扑排序|复杂度分析|时间复杂度|空间复杂度'
+    r'|状态机|死锁|协程|指令集|微架构|寄存器|编译原理|抽象语法树|虚拟内存|缓存一致性'
+    r'|Paxos|Raft|分布式一致性|内核|系统调用|并发安全|垃圾回收机制|内存屏障|B\+?树|LSM[- ]?Tree',
+    re.I
+)
+
+_HARD_REASONING = re.compile(
+    r'(?:比较|对比|权衡|取舍|优缺点|本质区别).{1,30}(?:机制|架构|瓶颈|边缘情况|底层逻辑|优劣|异同)'
+    r'|(?:分析|论证|剖析).{1,25}(?:因果关系|传导机制|博弈过程|数学期望|稳定性条件)',
+    re.I
+)
+
 _QUESTION = re.compile(r'为什么|为何|怎么|如何|能否|可行|区别|差异|好处|影响|可能|原理|讲讲|推算|求解|意味着|成立|支持')
 _TECH = re.compile(r'超导|拓扑|量子|哈密顿|指令集|微架构|虚拟化|产品线|制程|编译器|复杂度|梯度|归纳偏置|形式逻辑|神经网络|训练后权重|方程|定理|悖论|\b(?:[A-Z]+_[A-Z0-9_]+|cortex[- ][a-z0-9]+|\d+(?:\.\d+)?nm)\b', re.I)
 
@@ -24,8 +63,16 @@ def reasoning_request(row, by_id):
     text = re.sub(r'https?://\S+', ' ', text)
     if _MODEL_REQUEST.search(text) and not _NO_CARBON.search(text):
         return 'requested_carbon'
+    if _CASUAL_CHAT.search(text.strip()):
+        return None
     if _DEPTH.search(text):
         return 'analysis_request'
+    if _MATH_PHYSICS.search(text) and len(text) >= 10:
+        return 'math_physics_reasoning'
+    if _CS_ALGO_SYS.search(text) and len(text) >= 10:
+        return 'cs_algorithm_reasoning'
+    if _HARD_REASONING.search(text) and len(text) >= 12:
+        return 'hard_reasoning'
     if not _QUESTION.search(text):
         return None
     # Only a directly quoted human message may supply the subject of an

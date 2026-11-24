@@ -11,7 +11,7 @@ class CarbonCompanionTests(unittest.TestCase):
     def test_carbon_wait_is_bounded_by_turn_deadline_and_flash_wait_unchanged(self):
         from unittest.mock import patch,MagicMock
         from hakimi.models.vertex_session import VertexSession
-        for model,remaining,expected in [(CARBON,420,120),(CARBON,20,20),(FLASH,420,48),(ARGON,420,48)]:
+        for model,remaining,expected in [(CARBON,420,200),(CARBON,20,20),(FLASH,420,48),(ARGON,420,48)]:
             response=MagicMock()
             response.__enter__.return_value=response
             response.__iter__.return_value=iter([b'data: {"candidates":[{"finishReason":"STOP","content":{"parts":[]}}]}\n',b'\n'])

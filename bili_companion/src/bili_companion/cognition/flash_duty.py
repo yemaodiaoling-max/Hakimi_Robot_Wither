@@ -82,17 +82,16 @@ def duty_modes(config, *, profile=None, initial_mode='flash'):
 
 def active_text_models(config):
     """Resolve both text duties for the panel and the QQ duty status."""
-    if config.get('qq_flash_low_profile'):
-        return {'qq': FLASH_LOW_MODEL, 'review': FLASH_LOW_MODEL}
-    flash_modes = duty_modes(config)
-    active = {}
-
     def active_preference(preference, lane):
         route = preferred_text_duty(config, preference)
         if route and duty_modes(config, profile=route[0])[lane] == 'flash':
             return route[1]
         return None
 
+    if config.get('qq_flash_low_profile'):
+        return {'qq': active_preference('qq', 'qq') or FLASH_LOW_MODEL, 'review': FLASH_LOW_MODEL}
+    flash_modes = duty_modes(config)
+    active = {}
     for lane in ('qq', 'review'):
         model = active_preference(lane, lane)
         if not model:
@@ -107,15 +106,19 @@ def active_text_models(config):
 
 def run_text_duty(config, lane, generate, standby, *, allow_hydrogen=True):
     """Dispatch the configured QQ responder or post-turn reviewer."""
-    if lane in ('qq', 'review') and config.get('qq_flash_low_profile'):
-        return generate(FLASH_LOW_MODEL, False)
-
     def with_profile(route, fallback):
         if route is None:
             return fallback(None)
         profile, model = route
         return run_flash(config, lane, lambda: generate(model, False), fallback,
                          recovery=lambda: generate(model, True), duty_profile=profile)
+
+    if config.get('qq_flash_low_profile') and lane in ('qq', 'review'):
+        def flash_low(_):
+            return generate(FLASH_LOW_MODEL, False)
+        if lane == 'qq' and allow_hydrogen:
+            return with_profile(preferred_text_duty(config, 'qq'), flash_low)
+        return flash_low(None)
 
     def with_flash(_):
         return run_flash(config, lane, lambda: generate(FLASH_MODEL, False), standby,

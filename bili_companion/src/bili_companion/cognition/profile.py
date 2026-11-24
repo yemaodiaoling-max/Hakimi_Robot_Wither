@@ -11,7 +11,7 @@ import time
 from urllib.request import ProxyHandler, Request, build_opener
 from urllib.parse import urlsplit
 
-from .gateway import CognitionUnavailable, _NoRedirect
+from .gateway import CognitionUnavailable, _NoRedirect, hydrogen_mp4
 
 
 ORIGINAL_RELAY_URL = 'https://blameupstream.com/v1'
@@ -118,7 +118,10 @@ def load_profile(path,*,clock=time.time,audit_costs=True,_market_rates=None,text
     if raw.get('output_limit_parameter') not in limit_names:
         raise CognitionUnavailable('provider_output_cap_unverified')
     maximum=raw.get('max_output_tokens')
-    if type(maximum) is not int or not 128<=maximum<=(8192 if media_mode=='text_only' else 2048):
+    ceiling = 8192 if media_mode == 'text_only' else 2048
+    if hydrogen_mp4(raw.get('observer_model'), media_mode):
+        ceiling = 4096
+    if type(maximum) is not int or not 128<=maximum<=ceiling:
         raise CognitionUnavailable('provider_output_cap_unverified')
     if raw.get('reasoning_effort') not in {None,'low','medium','high'}:
         raise CognitionUnavailable('provider_reasoning_setting_invalid')

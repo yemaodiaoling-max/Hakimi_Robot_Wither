@@ -16,7 +16,7 @@ import tempfile
 from threading import local
 from urllib.error import HTTPError
 from urllib.request import Request,build_opener,ProxyHandler,HTTPSHandler
-from .gateway import CognitionUnavailable
+from .gateway import CognitionUnavailable, NATIVE_VIDEO_SOURCES, hydrogen_mp4
 from .provider_probe import _endpoint,_NoRedirect
 
 
@@ -98,7 +98,7 @@ class OpenAICompatibleClient:
             return value
         except Exception:raise CognitionUnavailable('provider_credentials_invalid') from None
 
-    def _media(self,part):
+    def _media(self,part,model):
         blob=part['inlineData']
         if blob.get('mimeType')!='video/mp4':
             raise CognitionUnavailable('provider_media_unsupported')
@@ -124,12 +124,15 @@ class OpenAICompatibleClient:
                     self._prepared.media_sources = dict(video='local-timestamped-frames',
                         audio='local-wenet-transcript' if has_speech else 'unavailable')
                     return parts, bound
-                if 'audio' not in streams:
+                joint_mp4 = hydrogen_mp4(model, self.media_mode)
+                has_audio = 'audio' in streams
+                if not has_audio and not joint_mp4:
                     raise ValueError('real audio and video required')
                 if self.media_mode in {'mp4_image_url','native_video'}:
                     bounded=root/'bounded.mp4'
+                    frame_filter = f'fps={min(2., 8/duration):.6f}:round=up' if joint_mp4 else 'fps=0.2'
                     subprocess.run(['ffmpeg','-nostdin','-hide_banner','-loglevel','error','-i',str(source),
-                        '-t','30','-vf','fps=0.2,scale=320:320:force_original_aspect_ratio=decrease:force_divisible_by=2','-c:v','libx264','-preset','ultrafast',
+                        '-t','30','-map','0:v:0','-map','0:a:0?','-vf',f'{frame_filter},scale=320:320:force_original_aspect_ratio=decrease:force_divisible_by=2','-c:v','libx264','-preset','ultrafast',
                         '-crf','30','-c:a','aac','-ac','1','-ar','16000','-b:a','32k',str(bounded)],
                         capture_output=True,check=True,timeout=40)
                     checked=subprocess.run(['ffprobe','-v','error','-count_frames','-show_entries',
@@ -137,14 +140,19 @@ class OpenAICompatibleClient:
                         '-of','json',str(bounded)],capture_output=True,check=True,timeout=15)
                     description=json.loads(checked.stdout);streams=description['streams']
                     video=next(s for s in streams if s['codec_type']=='video')
-                    audio_stream=next(s for s in streams if s['codec_type']=='audio')
+                    audio_stream=next((s for s in streams if s['codec_type']=='audio'), None)
                     frames=int(video['nb_read_frames'])
                     if (not 1<=frames<=12 or video['width']>320 or video['height']>320
-                            or int(audio_stream['sample_rate'])!=16000 or audio_stream['channels']!=1
+                            or bool(audio_stream)!=has_audio
+                            or (has_audio and (int(audio_stream['sample_rate'])!=16000 or audio_stream['channels']!=1))
                             or bounded.stat().st_size>2*1024*1024):raise ValueError('media outside envelope')
                     encoded=base64.b64encode(bounded.read_bytes()).decode()
                     item=dict(type='image_url',image_url={'url':'data:video/mp4;base64,'+encoded}) if self.media_mode=='mp4_image_url' else dict(type='video_url',video_url={'url':'data:video/mp4;base64,'+encoded})
-                    return [item],frames*4096+math.ceil(duration)*1024
+                    if joint_mp4:
+                        self._prepared.media_sources = dict(NATIVE_VIDEO_SOURCES)
+                        if not has_audio:
+                            self._prepared.media_sources['audio'] = 'unavailable'
+                    return [item],frames*4096+(math.ceil(duration)*1024 if has_audio else 0)
                 subprocess.run(['ffmpeg','-nostdin','-hide_banner','-loglevel','error','-i',str(source),
                     '-vf','fps=0.2,scale=320:320:force_original_aspect_ratio=decrease:force_divisible_by=2','-frames:v','12',str(root/'frame-%02d.jpg')],
                     capture_output=True,check=True,timeout=30)
@@ -192,6 +200,8 @@ class OpenAICompatibleClient:
             'inlineData' not in part and 'fileData' not in part
             for content in contents for part in content['parts'])
         output_ceiling=8192 if model=='gemini-4-hydrogen-high' or self.media_mode=='frames_transcript' or long_text else 2048
+        if hydrogen_mp4(model, self.media_mode):
+            output_ceiling=4096
         if type(maximum) is not int or not 1<=maximum<=output_ceiling:raise ValueError('bounded output required')
         messages=[];media_count=0;media_tokens=0;text_bytes=0
         system=system_parts
@@ -208,7 +218,7 @@ class OpenAICompatibleClient:
                         raise CognitionUnavailable('provider_media_unsupported')
                     media_count+=1
                     if media_count>1:raise CognitionUnavailable('provider_media_count_exceeded')
-                    media_parts,media_bound=self._media(part)
+                    media_parts,media_bound=self._media(part,model)
                     parts.extend(media_parts);media_tokens+=media_bound
                 else:raise CognitionUnavailable('provider_part_unsupported')
             if parts:messages.append(dict(role='user',content=parts))

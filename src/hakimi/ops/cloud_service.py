@@ -64,14 +64,18 @@ def generate(prompt,coordinator,claim):
         vertex_route.enforce_primary(RUNTIME,route=route)
     from hakimi.models.scoped_session import ScopedSession
     if route.enabled:
-        from hakimi.models.task_routing import select
-        selected_model, routing_reason=select(ROOT,claim.get('payload',{}),route.model)
+        routing = claim.get('task_model_routing')
+        if routing and 'model' in routing:
+            selected_model, routing_reason = routing['model'], routing.get('reason', '')
+        else:
+            from hakimi.models.task_routing import select
+            selected_model, routing_reason=select(ROOT,claim.get('payload',{}),route.model)
+            claim=dict(claim, task_model_routing={'model':selected_model,'reason':routing_reason})
         args=[str(Path.home()/'.local/bin/agy'),'--input-format','stream-json',
               '--output-format','stream-json','--model',selected_model,'--effort','low',
               '--disable-slash-commands','--print-timeout','420s']
         env=route.client_environment(environment())
         env['AGY_LLM_GATEWAY_MODELS']=selected_model
-        claim=dict(claim, task_model_routing={'model':selected_model,'reason':routing_reason})
         from hakimi.models.argon_session import ArgonSession
         factory=ArgonSession
         if selected_model=='gemini-4-carbon':
@@ -211,9 +215,14 @@ def _agent_lane():
         backoff=0
         review=isinstance(claim.get('payload'),dict) and isinstance(claim['payload'].get('internal_review'),dict)
         try:
+            selected_model = None
+            if vertex:
+                from hakimi.models.task_routing import select
+                selected_model, routing_reason = select(ROOT, claim.get('payload', {}), route.model)
+                claim = dict(claim, task_model_routing={'model': selected_model, 'reason': routing_reason})
             from hakimi.models.search_routing import prepare as prepare_search
             claim['payload']['_web_context'] = prepare_search(claim['payload'],RUNTIME,timeout=min(12,max(.1,claim['deadline']-time.time()-10)))
-            prompt=render_prompt(claim['payload'],RUNTIME,claim,cli_label=command,wait_after_turn=False,native=vertex)
+            prompt=render_prompt(claim['payload'],RUNTIME,claim,cli_label=command,wait_after_turn=False,native=vertex,selected_model=selected_model)
             activate_context(claim['payload'],RUNTIME,claim=claim)
             result=generate(prompt,coordinator,claim)
             reason=_failure_reason(result,vertex)

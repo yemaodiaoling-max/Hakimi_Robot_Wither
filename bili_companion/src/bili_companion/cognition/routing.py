@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 from bili_companion.policy.budget import AUTONOMOUS_VIDEO_ONLY
 
-from .gateway import CognitionUnavailable, GatewayClient, HYDROGEN, NATIVE_VIDEO_MODEL
+from .gateway import CognitionUnavailable, GatewayClient, HYDROGEN, NATIVE_VIDEO_MODEL, hydrogen_mp4
 from .live import CognitionEngine, BudgetPaused, prices, _json_response
 from .openai_provider import OpenAICompatibleClient, reported_model_matches
 from .profile import load_flash_profile, load_profile, load_video_selection_profile
@@ -102,9 +102,16 @@ class HydrogenRouteEngine(CognitionEngine):
         return self._call_legacy(payload, legacy_model=model, response_validator=response_validator,
                                  flash_validator=flash_validator, **kwargs)
 
+    def _video_route_keys(self, purpose):
+        if purpose != 'video-observe':
+            return (purpose,)
+        relay = self.video_routes.get(purpose)
+        if relay and hydrogen_mp4(relay[0].observer_model, getattr(relay[0].client, 'media_mode', None)):
+            return purpose, NATIVE_VIDEO_ROUTE
+        return NATIVE_VIDEO_ROUTE, purpose
+
     def request_limit_for(self, purpose):
-        keys = (NATIVE_VIDEO_ROUTE, purpose) if purpose == 'video-observe' else (purpose,)
-        for key in keys:
+        for key in self._video_route_keys(purpose):
             route = self.video_routes.get(key)
             if route:
                 engine, duty = route
@@ -128,9 +135,8 @@ class HydrogenRouteEngine(CognitionEngine):
 
     def _call_video_route(self, payload, validator, **kwargs):
         purpose = kwargs['purpose']
-        keys = (NATIVE_VIDEO_ROUTE, purpose) if purpose == 'video-observe' else (purpose,)
         prior = ()
-        for key in keys:
+        for key in self._video_route_keys(purpose):
             if key not in self.video_routes:
                 continue
             adjusted = _native_video_payload(payload) if key == NATIVE_VIDEO_ROUTE else payload
@@ -425,7 +431,7 @@ def _video_engine(profile, ledger, memory, options, *, timeout=90, long_text=Fal
                              retain_frames_without_speech=raw['media_mode']=='frames_transcript')
     return CognitionEngine(client, ledger, memory, observer_model=model, decider_model=model,
         price_resolver=profile.prices, call_provider=urlsplit(profile.base_url).hostname,
-        **dict(options, max_output_tokens=min(raw['max_output_tokens'], 2048),
+        **dict(options, max_output_tokens=min(raw['max_output_tokens'], 4096 if hydrogen_mp4(model, raw['media_mode']) else 2048),
                request_usd_limit=raw.get('per_request_usd_limit', '.04')))
 
 

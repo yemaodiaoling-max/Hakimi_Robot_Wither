@@ -17,6 +17,10 @@ BASE_URL = 'https://127.0.0.1:18765'
 NATIVE_VIDEO_SOURCES = {'video': 'native-video-frames', 'audio': 'native-video-audio'}
 
 
+def hydrogen_mp4(model, media_mode):
+    return model == HYDROGEN and media_mode == 'mp4_image_url'
+
+
 class CognitionUnavailable(RuntimeError):
     def __init__(self, code='model_unavailable'):
         self.code = code

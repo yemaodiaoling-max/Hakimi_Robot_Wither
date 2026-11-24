@@ -34,7 +34,41 @@ function render(data){
  if(!videos.children.length)videos.append(element('p','暂无实际观看记录。','empty'));
  let pendingCount=0;for(const row of selections){if(row.bvid&&videoIds.has(row.bvid))continue;const item=document.createElement('article');item.append(link(row));selectionDetails(item,row);unwatched.append(item);pendingCount++;}
  document.getElementById('pending').hidden=!pendingCount;
- const comments=document.getElementById('comments');comments.replaceChildren();for(const row of data.video_comment_attempts||[]){const item=document.createElement('article');item.append(link(row),element('p',(commentLabels[row.state]||'未确认状态')+' · '+time(row.at),'meta'),element('div',row.text||'评论内容未记录','detail'));comments.append(item);}if(!comments.children.length)comments.append(element('p','暂无评论尝试。','empty'));
+ const comments = document.getElementById('comments');
+ comments.replaceChildren();
+ const attempts = [...(data.video_comment_attempts || []), ...(data.comment_reply_attempts || [])];
+ attempts.sort((a, b) => b.at - a.at);
+ for (const row of attempts) {
+   const item = document.createElement('article');
+   const confirmed = row.visibility === 'public_confirmed' || row.state === 'public_confirmed';
+   const labels = {silent:'决定不回复', generating:'已登记回复意图', not_confirmed:'回查尚未确认',
+     account_only_readable:'发布账号读到，匿名未读到', both_not_read:'发布账号与匿名均未读到',
+     public_confirmed:'匿名详情已读到', check_blocked:'本次核验受阻'};
+   const status = labels[row.read_status] || labels[row.visibility] ||
+     (confirmed ? labels.public_confirmed : labels[row.state] || commentLabels[row.state] || '状态未知');
+   const kind = row.parent ? '回复' : '顶层评论';
+   item.append(link(row), element('p', kind+' · '+status+' · '+time(row.at),'meta'));
+   if (row.incoming) item.append(element('div','对方：'+row.incoming,'meta'));
+   if (row.text) item.append(element('div',row.text,'detail'));
+   const receipt = [];
+   if (row.notice) receipt.push(row.notice);
+   if (row.code && row.code !== 'accepted') receipt.push('返回码 '+row.code);
+   if (Number.isInteger(row.review_state)) receipt.push('提交时状态 '+row.review_state);
+   if (Number.isInteger(row.account_review_state)) receipt.push('本人回查状态 '+row.account_review_state);
+   if (row.read_checked_at) receipt.push('核验于 '+time(row.read_checked_at));
+   if (row.anonymous_code) receipt.push('匿名查询 '+row.anonymous_code);
+   if (row.account_code) receipt.push('登录查询 '+row.account_code);
+   if (receipt.length) item.append(element('div',receipt.join(' · '),'meta'));
+   if (/^BV[a-zA-Z0-9]{10}$/.test(row.bvid) && Number.isSafeInteger(row.rpid) && row.rpid > 0) {
+     const locator = element('a','定位评论 '+row.rpid);
+     locator.href = 'https://www.bilibili.com/video/'+row.bvid+'/#reply'+row.rpid;
+     locator.target = '_blank';
+     locator.rel = 'noopener noreferrer';
+     item.append(locator);
+   }
+   comments.append(item);
+ }
+ if (!comments.children.length) comments.append(element('p','暂无评论尝试。','empty'));
  for(const id of openContextIds)revealContext('#'+id,false);
  if(location.hash&&initialContextNavigation)revealContext(location.hash,true);
  initialContextNavigation=false;

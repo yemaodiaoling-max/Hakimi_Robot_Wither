@@ -4,15 +4,16 @@
 
 一只住在 QQ 群、B 站和你电脑桌面上的猫系 AI 同伴。三种形态共用**同一个记忆内核**：在 QQ 群里聊过的事、在 B 站看过的视频、桌宠陪你写代码的经历，都会成为同一只哈基米的记忆，它会在下一次聊天时自然地想起来。
 
+- ⚡ **单 API 开箱即用，也可按需拆分多 API / 多 Agent**：开源版只需填写**一个 API Key**（支持 Google Gemini、Gemini 兼容或任意 OpenAI 兼容接口）即可跑通完整功能；备用模型、异步复盘、上下文筛选、联网预搜索与运维督导均支持在设置面板独立配置，默认全部关闭或复用主网关。
 - 🐱 **会挑时机说话的群友**：被 @ 立即回应，其它时候先读上下文再决定要不要接话；群里冷场时会主动抛话题，热闹时懂得退让。
 - 🧠 **长期记忆与关系网**：记得每个群友说过的话、外号和梗，给每个人记“小本子”，好感与亲近度随互动变化；每晚写一篇私有日记。
 - 📺 **自己刷 B 站**：按兴趣看推荐视频、蹲守指定直播间，看过的内容会变成和 QQ 群共享的谈资。
 - 🖥️ **桌面宠物**：趴在 Windows 桌面上看屏幕吐槽、语音聊天、在你确认后帮你操作电脑。
-- 🔐 **密钥只在你的服务器上**：所有模型请求都经过本机网关，统一记账、可设月度花费上限。
+- 🔐 **密钥只在你的服务器上**：所有模型请求都经过本机网关，统一记账、可设月度花费上限；辅助 API 密钥单独加密保存。
 
 ## 目录
 
-- [模块](#模块) · [架构](#架构) · [功能一览](#功能一览)
+- [模块](#模块) · [架构](#架构) · [单 API 开箱与独立模块开关](#单-api-开箱与独立模块开关) · [功能一览](#功能一览)
 - [快速开始（Linux 服务器）](#快速开始linux-服务器) · [桌宠（Windows）](#桌宠windows)
 - [自定义人设与身份](#自定义人设与身份) · [常用命令](#常用命令) · [更新](#更新)
 - [数据与隐私](#数据与隐私) · [开发与测试](#开发与测试) · [文档](#文档) · [许可](#许可)
@@ -31,18 +32,34 @@
 ## 架构
 
 ```
-                 ┌──────────── 记忆内核 core ────────────┐
-                 │ 记忆库 memory.sqlite3 · 关系网 · 日记  │
-  QQ 机器人 ───▶ │ 信息面板 / 设置面板 (:18768)           │ ◀─── 桌宠（Windows，本机或 SSH）
-                 │ 本地模型网关 (:18765) ──▶ Gemini API   │
-                 └───────────────▲───────────────────────┘
-                                 │ 每 30 分钟交换摘要
-                           视频机器人（B 站）
+                 ┌─────────────── 记忆内核 core ───────────────┐
+                 │ 记忆库 memory.sqlite3 · 关系网 · 日记       │
+  QQ 机器人 ───▶ │ 信息面板 / 设置面板 (:18768)                │ ◀─── 桌宠（Windows，本机或 SSH）
+                 │ 本地模型网关 (:18765) ──▶ Gemini / OpenAI   │
+                 └───────────────▲───────────────────────┬─────┘
+                                 │ 每 30 分钟交换摘要     │ 可选辅助扩展（aux_config.json，默认关/复用网关）
+                           视频机器人（B 站）            └─▶ 独立复盘/备用 HTTP API · 可选 CLI Agent
 ```
 
-- 代码是一个可安装的 Python 包 `hakimi`（`src/hakimi/`），视频模块是同仓库下的 `bili_companion/` 包。
-- 运行数据（配置、记忆库、日记、发送记录）放在**实例目录**里（默认 `~/hakimi-data`），和代码完全分开。
-- 所有模型调用默认只需**这一个 API**：经本机网关 `https://127.0.0.1:18765` 转发到你配置的上游（支持 Google Gemini、Gemini 兼容或任何 OpenAI 兼容接口）。
+- **同一套代码，纯配置区分**：下载开源版直接运行，与开启多路高可用、多 Agent 协作的生产实例使用的是同一套核心代码；所有行为差异和独立端点都在**实例目录**（默认 `~/hakimi-data`）中通过配置文件开启。
+- **核心与视频包结构**：主程序是可安装的 Python 包 `hakimi`（`src/hakimi/`），视频模块是同仓库下的 `bili_companion/` 包。
+- **开箱只需一个上游 API**：所有核心调用经本机网关 `https://127.0.0.1:18765` 转发，支持 Google Gemini、Gemini 兼容端点或任何 OpenAI Chat Completions 兼容接口（如 DeepSeek、OpenRouter、自建网关等）。
+
+## 单 API 开箱与独立模块开关
+
+为了既能“填一个 Key 就能用”，又兼容生产环境给不同职责挂不同模型与外部 Agent，所有辅助能力统一由实例目录下的 `aux_config.json` 与 `/setup.html` 面板的 **「高级与独立 API」** 管理：
+
+| 模块 / 辅助能力 | `aux_config.json` 键 | 开源默认（开箱） | 可选独立模式 |
+|---|---|---|---|
+| **异步复盘与日常事件卡** | `review` | `mode: "main_gateway"`（复用主网关） | `custom_api`（独立 OpenAI/Gemini HTTP API）、`companion_duty` 或关闭 |
+| **QQ 主模型热切换通道** | `qq_backup` | `enabled: false`（`mode: "disabled"`） | `custom_api`（独立 OpenAI/Gemini HTTP API，支持 `fallback_model`）或 `companion_duty` |
+| **主模型故障兜底** | `fallback` | `enabled: false`（`backend: "http_api"`） | 开启后走独立 HTTP API（无需外部 CLI）或外部 `dsh` CLI |
+| **上下文与续聊筛选裁判** | `context_judge` | `mode: "heuristic"`（本地启发式，零调用） | `main_gateway`、`custom_api` 或 `dsh` |
+| **联网预搜索与付费搜索** | `search_routing` | `enabled: false`，`judge_mode: "local_rules"`，`paid_search_mode: "disabled"` | 可启用预搜索判断（`main_gateway` / `custom_api` / `dsh`）与 DeepSeek 付费搜索；关闭时手动 `web.search` 仍可用免费源 |
+| **每日日记兜底写手** | `diary.fallback_enabled` | `false`（仅主模型，不依赖外部兜底） | `true`（主模型不可用时调用已启用的 `fallback` 通道） |
+| **运维看门狗 / Terra 督导 / Sol 修复 / 专家求助** | `ops.*` | 4 项开关全部 `false`（零额外后台督导进程） | 逐项独立开关（`watchdog_enabled`、`terra_supervision_enabled`、`sol_repair_enabled`、`codex_help_enabled`），可选 `main_gateway`、`custom_api` 或 `codex_cli` |
+
+> 普通用户保持默认配置即可运行全部聊天、记忆、日记、搜图、公式排版等核心体验；如需给某一项挂单独的低价模型或外部 CLI，只需在设置面板展开 **「高级与独立 API」** 填写并保存，配置格式可通过 `hakimi config check` 校验。详细配置键见 [docs/configuration.md](docs/configuration.md)。
 
 ## 功能一览
 
@@ -50,7 +67,7 @@
 - 被 @ 或私聊即时回应；平时积累上下文、给每轮发言打分后再决定是否插话，活跃群里主动退让。
 - 冷场时按时间窗口主动开启话题。
 - 按用户限流：同一个人 30 分钟内最多触发 7 轮回复，防刷屏、控成本。
-- 备用模型、独立复盘 API、上下文筛选裁判、联网预搜索与运维督导 Agent 均**默认关闭或复用主网关**，开箱无需额外 API 或 CLI；需要高可用时可在面板逐项按需开启或指定独立 API。
+- 备用通道、独立复盘 API、上下文筛选裁判、联网预搜索与运维督导均**默认关闭或复用主网关**，开箱无需额外 API 或 CLI；需要高可用时按上表按需启用。
 
 **记忆与关系**
 - 原文存储，全文 + 可选语义混合检索；按群隔离，群聊里不会说出私聊内容。
@@ -66,11 +83,11 @@
 
 **面板**（只监听本机，令牌保护，通过 SSH 隧道访问）
 - 关系面板（关系图、人物、跨群的好感与档案）、消息日志、旧群与成员匹配、视频活动、复盘变化、调用预算、绘图设置。
-- 设置面板：模块开关、模型与 Key、主人与人设、QQ 机器人、B 站登录、桌宠连接，保存后自动写配置并重启相关服务。
+- 设置面板：模块开关、模型与 Key、主人与人设、QQ 机器人、B 站登录、桌宠连接，以及默认折叠的 **「高级与独立 API」**，保存后自动写配置并重启相关服务。
 
 **运维**
-- 本地模型网关：统一记账，按单价估算花费，可设月度上限；达到上限后自动切备用模型或暂停看视频。
-- 可选服务健康巡查、风格督导与自动修复（默认关闭，可在面板按需启用并选择复用主网关、独立 API 或 `codex` 命令行）。
+- 本地模型网关：统一记账，按单价估算花费，可设月度上限；达到上限后自动切换已配置的备用通道或暂停看视频。
+- 可选服务看门狗、Terra 风格评价、Sol 最小修复与专家求助队列（全部默认关闭，可在面板或 `aux_config.json` 单独开关与指定后端）。
 
 完整清单与每项功能的开关见 [docs/features.md](docs/features.md)。
 
@@ -103,6 +120,7 @@ HAKIMI_ROOT=~/hakimi-data .venv/bin/hakimi setup url
 4. **QQ 机器人**：在 [QQ 开放平台](https://q.qq.com) 创建机器人，填 AppID、AppSecret 和测试群号。
 5. **B 站**：扫码登录（或手动粘贴 Cookie），可选一个优先直播间。
 6. **桌宠**：选择本机或 SSH 连接，复制生成的 `pet_connection.json`。
+7. **（可选）高级与独立 API**：如果只想单 API 运行可直接跳过；需要给复盘、QQ 热备、兜底模型、裁判或运维督导指定独立 API/Agent 时再展开配置。
 
 勾选「保存后重启相关服务」并保存，面板会把设置写进各模块的配置文件并启动对应服务。检查运行状态：`systemctl --user status 'hakimi-*'`。
 
@@ -148,11 +166,11 @@ python -m venv .venv; .venv\Scripts\pip install -e .[pet]
 ## 常用命令
 
 ```bash
-hakimi modules                 # 已安装 / 已启用的模块
+hakimi modules                 # 已安装 / 已启用的模块（受 aux_config.json 与模块开关共同控制）
 hakimi setup status            # 已配置的项目（不显示密钥）
 hakimi gateway status          # 模型网关：上游、模型映射、本月请求数与估算花费
 hakimi gateway models          # 列出上游 Key 可用的模型
-hakimi config check            # 检查实例配置文件
+hakimi config check            # 检查实例配置文件（含 aux_config.json 语义校验）
 hakimi features                # 功能清单与开关状态
 systemctl --user status 'hakimi-*'
 journalctl --user -u hakimi-agent -f   # 看回复服务的日志
@@ -170,7 +188,7 @@ systemctl --user restart 'hakimi-*.service'
 
 ## 数据与隐私
 
-- **密钥只保存在你的服务器上**：模型 Key 在网关目录（权限 0600），各模块进程拿不到；QQ AppSecret、DeepSeek Key 用 Fernet 加密保存在 `~/.config/hakimi/`；B 站 Cookie 加密保存在视频模块的私有目录。面板只显示“已保存/未填写”，不回显任何值。
+- **密钥只保存在你的服务器上**：主模型 Key 保存在网关目录（权限 0600），各模块进程拿不到；QQ AppSecret 与设置面板填入的各路独立辅助 API Key（`credentials.fernet` 中的 `provider` 与 `aux` 段）均用 Fernet 加密保存在 `~/.config/hakimi/`；B 站 Cookie 加密保存在视频模块的私有目录。面板只显示“已保存/未填写”，不回显任何值。
 - **聊天记录、记忆库、日记都在实例目录里**，不在代码仓库中；`.gitignore` 已排除这些目录，请不要把实例目录提交到 git。
 - **隐私边界**：记忆按群隔离，群聊里不会引用私聊内容；桌宠看到你在和别人私聊时，只陪你吐槽，不写进共享记忆；跨模块只交换整理过的摘要，不复制私聊原文和账号信息。
 - **面板安全**：只监听 `127.0.0.1`，需要令牌，写操作校验同源。

@@ -78,6 +78,24 @@ class NativeVideoRouteTests(unittest.TestCase):
         self.assertEqual(self.transcript.requests, [])
         self.assertEqual(self.ledger.entries()[0]['state'], 'settled')
 
+    def test_verified_hydrogen_mp4_precedes_vertex_and_falls_back_with_sound(self):
+        from bili_companion.cognition.gateway import HYDROGEN
+
+        relay, _ = self.route.video_routes['video-observe']
+        relay.observer_model = HYDROGEN
+        self.transcript.media_mode = 'mp4_image_url'
+        good = dict(response(self.observed()), _media_sources=NATIVE_VIDEO_SOURCES,
+                    _provider_response_metadata={'reported_model': HYDROGEN})
+        self.transcript.replies.extend([good, dict(good, _provider_response_metadata={})])
+        self.native._request.side_effect = [{'totalTokens': 1000}, response(self.observed())]
+        primary = self.route.observe(self.chunk, self.scope, 0, allow_decision=False)
+        self.assertIn(HYDROGEN + ':native-video-audio:', primary.observation.evidence[0].version)
+        self.native._request.assert_not_called()
+        fallback = self.route.observe(self.chunk, self.scope, 0, allow_decision=False)
+        self.assertIn(OBSERVER + ':native-video-audio:', fallback.observation.evidence[0].version)
+        self.assertEqual(len(self.transcript.requests), 2)
+        self.assertEqual(len(self.route.role_events_for(fallback.request_ids)), 2)
+
     def test_qq_continuous_view_keeps_two_distinct_sound_and_picture_pairs(self):
         observed = self.observed()
         observed['events'] += [dict(event, start=4, end=6) for event in observed['events']]

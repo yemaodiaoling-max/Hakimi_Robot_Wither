@@ -97,8 +97,8 @@ TOOLS = [
     tool("video.watch_attachment", "用视频哈基米看QQ直发的视频。根据feedback和实际观看范围组织回复；若feedback有F1截图，可选择随回复发送。", {"ref":field("QQ视频消息里标出的ref")}, ("ref",)),
     tool("video.watch_miniapp", "查看本轮QQ分享的B站小程序卡片，按视频观察反馈回复。", {
         "message_id": field("可选当前可见卡片消息ID；省略时选最近的相关卡片")}),
-    tool("reply.send", "决定发言时提交正文及可选表情；用|分条，提交后本轮结束。", {
-        "text": field("正文；仅发表情时可为空"), "sticker": field("可选：从本轮可选表情包清单中挑一个应景的完整文件名（优先挑已收集表情包），独立发送"),
+    tool("reply.send", "决定发言时提交QQ自然聊天纯文本，用|分2-4个短气泡；全篇省略Markdown排版标记与裸LaTeX，长篇公式推导演算使用math.send渲染图片卡片。提交后本轮结束。", {
+        "text": field("聊天正文纯文本，用|分2-4个短气泡，全篇省略Markdown与裸LaTeX；仅发表情时可为空"), "sticker": field("可选：从本轮可选表情包清单中挑一个应景的完整文件名（优先挑已收集表情包），独立发送"),
         "reply_to": field("仅需要消歧时选本轮可见消息ID"),
         "video_frame": field("可选：只在本轮视频工具回执提供F1实际截图、且确实需要发图时填写F1", enum=["F1"]),
         "interaction": field("仅希望结束对你的争吵时标conflict，连续三轮实际回复后无视该用户一小时；正常分歧不标；与AI互动标ai豁免。", enum=["normal","conflict","ai"])}),

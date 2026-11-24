@@ -52,3 +52,9 @@ def bounded_memories(notes, budget=600, limit=4):
         result.append(note);budget-=len(note)
         if len(result)>=limit:break
     return result
+
+
+def build_memory_axes(notes, rolling_bridge, messages, target, now=None):
+    """Bridge function to organize retrieved memories into vertical and horizontal axes."""
+    from hakimi.memory.rolling_context import build_memory_axes as _bma
+    return _bma(notes, rolling_bridge, messages, target, now=now)

@@ -37,7 +37,7 @@ class ScopedSession:
         added=estimate_tokens(prompt)
         reserve=positive_setting(self.env,'HAKIMI_CONTEXT_TOOL_RESERVE',4096,1024,16000)
         budget=positive_setting(self.env,'HAKIMI_CONTEXT_TOKEN_BUDGET',24000,8000,64000)
-        max_turns=positive_setting(self.env,'HAKIMI_CONTEXT_MAX_TURNS',4,1,8)
+        max_turns=positive_setting(self.env,'HAKIMI_CONTEXT_MAX_TURNS',8,1,16)
         reason=None
         if previous and (previous.get('context_estimate_version')!=1
                          or type(previous.get('context_estimate')) is not int
