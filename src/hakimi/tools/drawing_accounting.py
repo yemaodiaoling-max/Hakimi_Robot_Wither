@@ -1,5 +1,5 @@
 """Per-provider drawing charges, in integer billionths of a US dollar."""
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -15,6 +15,7 @@ WINDOW_SECONDS = 20 * 60
 WINDOW_IMAGES = 2
 DAY_IMAGES = 20
 NEW_YORK = ZoneInfo('America/New_York')
+IMAGE_QUOTA_ERRORS = {'drawing_window_images', 'drawing_day_images'}
 
 
 class BudgetError(RuntimeError):
@@ -103,6 +104,18 @@ def quota_status(base):
         return _quota(db, time.time())
 
 
+def cooling_down(base):
+    """Read-only prompt hint. Admission always rechecks the quota under lock."""
+    path = Path(base) / 'state' / 'drawing_costs.sqlite3'
+    if not path.is_file():
+        return False
+    try:
+        with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True, timeout=.2)) as db:
+            return _quota(db, time.time())['available_at'] is not None
+    except sqlite3.Error:
+        return False
+
+
 def reserve(base, settings):
     try:
         limits = validate_limits(settings)
@@ -115,11 +128,8 @@ def reserve(base, settings):
         day = datetime.fromtimestamp(now, NEW_YORK).date().isoformat()
         quota = _quota(db, now)
         if quota['available_at'] is not None:
-            available = datetime.fromtimestamp(quota['available_at'], NEW_YORK).strftime('%m月%d日 %H:%M:%S')
-            daily = quota['daily_remaining'] == 0
-            reason = '今天的 20 张绘图名额已用完' if daily else '这 20 分钟的两张绘图名额已用完'
-            code = 'drawing_day_images' if daily else 'drawing_window_images'
-            raise BudgetError(code, f'{reason}，美东时间 {available} 起可以再画。')
+            code = 'drawing_day_images' if quota['daily_remaining'] == 0 else 'drawing_window_images'
+            raise BudgetError(code, '绘图正在冷却。')
         for period, date_key, name, label in (
                 ('daily', day, 'day', '今日'), ('monthly', day[:7], 'month', '本月')):
             cap = limits[period + '_usd_limit']

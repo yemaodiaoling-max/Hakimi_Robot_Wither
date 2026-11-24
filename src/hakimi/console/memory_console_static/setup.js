@@ -263,7 +263,7 @@
     const field = n => form.querySelector('[name="model.' + n + '"]').value.trim();
     try {
       const data = await api('/api/setup/check', {target: 'model', model: {
-        base_url: field('base_url'), auth: field('auth'), proxy: field('proxy'), api_key: field('api_key')}});
+        provider: field('provider'), base_url: field('base_url'), auth: field('auth'), proxy: field('proxy'), api_key: field('api_key')}});
       const list = $('modelNames');
       list.replaceChildren(...data.models.map(name => Object.assign(document.createElement('option'), {value: name})));
       out.textContent = '连接成功，可用模型 ' + data.models.length + ' 个（输入框可直接选择）';
@@ -372,6 +372,7 @@
     renderPetPreview();
     $('spent').textContent = '$' + Number(data.gateway.spent_usd || 0).toFixed(2) + ' · ' + data.gateway.requests + ' 次';
     $('dshState').textContent = data.tools.dsh ? '（已检测到 dsh）' : '（未检测到 dsh）';
+    if ($('codexState')) $('codexState').textContent = data.tools.codex ? '（已检测到 codex）' : '（未检测到 codex）';
     $('restartToggle').hidden = !data.tools.systemctl;
     if (full) {
       $('saveState').textContent = data.secrets['model.api_key'] ? '已配置' : '尚未配置';
@@ -415,9 +416,15 @@
     if (event.target.name && event.target.name.startsWith('pet.')) renderPetPreview();
   });
   form.addEventListener('change', event => {
-    if (event.target.name === 'model.provider' && event.target.value === 'gemini') {
-      form.querySelector('[name="model.base_url"]').value = 'https://generativelanguage.googleapis.com';
-      form.querySelector('[name="model.auth"]').value = 'x-goog-api-key';
+    if (event.target.name === 'model.provider') {
+      if (event.target.value === 'gemini') {
+        form.querySelector('[name="model.base_url"]').value = 'https://generativelanguage.googleapis.com';
+        form.querySelector('[name="model.auth"]').value = 'x-goog-api-key';
+      } else if (event.target.value === 'openai_compatible') {
+        form.querySelector('[name="model.auth"]').value = 'bearer';
+        const u = form.querySelector('[name="model.base_url"]');
+        if (u.value.trim() === 'https://generativelanguage.googleapis.com') u.value = 'https://api.openai.com';
+      }
     }
     if (event.target.name && event.target.name.startsWith('pet.')) renderPetPreview();
   });

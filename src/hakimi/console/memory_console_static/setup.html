@@ -33,6 +33,7 @@
     <nav class="steps" aria-label="设置分区">
       <a href="#sec-modules">模块</a>
       <a href="#sec-model">模型与 Key</a>
+      <a href="#sec-aux">高级与独立 API</a>
       <a href="#sec-owner">主人</a>
       <a href="#sec-persona">人设</a>
       <a href="#sec-qq" data-module="qq">QQ 机器人</a>
@@ -49,18 +50,19 @@
 
       <section class="card" id="sec-model">
         <h2 class="card-title">模型与 Key</h2>
-        <p class="card-sub">所有模块都通过本机网关调用模型。默认使用 Google AI Studio 的 Gemini API；也可以填任何兼容 Gemini 协议的地址。</p>
+        <p class="card-sub">所有模块默认只需这一个 API（通过本机网关调用）。支持 Google Gemini、Gemini 兼容或任意 OpenAI 兼容接口（DeepSeek / OpenRouter / 本地模型等）。</p>
         <div class="grid">
           <label class="field wide">
             <span>API Key <em class="secret-flag" data-secret="model.api_key"></em></span>
-            <input type="password" name="model.api_key" autocomplete="off" spellcheck="false" placeholder="例如 AI Studio 的 Gemini API Key">
-            <small>在 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a> 创建。留空表示保持已保存的 Key。</small>
+            <input type="password" name="model.api_key" autocomplete="off" spellcheck="false" placeholder="例如 AI Studio Gemini Key 或 OpenAI 兼容 Key">
+            <small>在 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a> 创建，或填任意 OpenAI/Gemini 兼容服务密钥。留空表示保持已保存的 Key。</small>
           </label>
           <label class="field">
             <span>接口类型</span>
             <select name="model.provider">
               <option value="gemini">Google Gemini API（官方）</option>
               <option value="gemini_compatible">Gemini 兼容地址（中转/自建）</option>
+              <option value="openai_compatible">OpenAI 兼容地址（DeepSeek / OpenRouter / 本地）</option>
             </select>
           </label>
           <label class="field">
@@ -123,15 +125,164 @@
           <div id="priceRows" class="price-rows"></div>
         </details>
         <details class="sub">
-          <summary>备用模型（DeepSeek，可选）</summary>
-          <p class="muted">主模型超时或不可用时接管回复。需要服务器上已安装 <code class="mono">dsh</code> 命令行（见 docs/modules.md）。<span id="dshState"></span></p>
+          <summary>备用兜底模型（可选，默认关闭）</summary>
+          <p class="muted">主模型超时或不可用时接管回复。默认通过纯 HTTP API 直连（无需额外 CLI）；也可切换为 <code class="mono">dsh</code> 命令行。<span id="dshState"></span></p>
           <div class="grid">
             <label class="field toggle wide"><input type="checkbox" name="fallback.enabled"><span>启用备用模型</span></label>
             <label class="field">
-              <span>DeepSeek API Key <em class="secret-flag" data-secret="fallback.api_key"></em></span>
+              <span>执行方式</span>
+              <select name="fallback.backend">
+                <option value="http_api">直接 HTTP API（推荐，零额外依赖）</option>
+                <option value="dsh">DSH 命令行（需安装 @deepseek-ai/dsh）</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>HTTP 协议</span>
+              <select name="fallback.protocol">
+                <option value="openai_compatible">OpenAI 兼容</option>
+                <option value="gemini">Gemini 协议</option>
+                <option value="main_gateway">复用主网关</option>
+              </select>
+            </label>
+            <label class="field"><span>模型名</span><input name="fallback.model" spellcheck="false" placeholder="deepseek-chat"></label>
+            <label class="field"><span>接口地址</span><input name="fallback.base_url" spellcheck="false" placeholder="https://api.deepseek.com"></label>
+            <label class="field wide">
+              <span>备用模型 API Key <em class="secret-flag" data-secret="fallback.api_key"></em></span>
               <input type="password" name="fallback.api_key" autocomplete="off" spellcheck="false">
             </label>
-            <label class="field"><span>接口地址</span><input name="fallback.base_url" spellcheck="false"></label>
+          </div>
+        </details>
+      </section>
+
+      <section class="card" id="sec-aux">
+        <h2 class="card-title">高级与独立 API</h2>
+        <p class="card-sub">默认单 API 模式即可正常运行；以下所有辅助模块默认关闭或复用主网关。如需按模块指定不同厂商的 API 或启用独立 Agent 运维，可在此展开配置。</p>
+
+        <details class="sub">
+          <summary>记忆与回复复盘（默认复用主网关轻量模型）</summary>
+          <div class="grid">
+            <label class="field toggle wide"><input type="checkbox" name="aux.review.enabled"><span>启用回复后复盘与事件整理</span></label>
+            <label class="field">
+              <span>复盘通道</span>
+              <select name="aux.review.mode">
+                <option value="main_gateway">复用主网关</option>
+                <option value="custom_api">独立 HTTP API</option>
+                <option value="companion_duty">B站伴侣独立通道（高级）</option>
+                <option value="disabled">关闭</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>协议</span>
+              <select name="aux.review.protocol">
+                <option value="openai_compatible">OpenAI 兼容</option>
+                <option value="gemini">Gemini 协议</option>
+              </select>
+            </label>
+            <label class="field"><span>模型名</span><input name="aux.review.model" spellcheck="false"></label>
+            <label class="field"><span>独立接口地址</span><input name="aux.review.base_url" spellcheck="false" placeholder="仅独立 API 时填写"></label>
+            <label class="field wide">
+              <span>复盘独立 API Key <em class="secret-flag" data-secret="aux.review.api_key"></em></span>
+              <input type="password" name="aux.review.api_key" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+        </details>
+
+        <details class="sub">
+          <summary>QQ 主模型备用切换通道（默认关闭）</summary>
+          <div class="grid">
+            <label class="field toggle wide"><input type="checkbox" name="aux.qq_backup.enabled"><span>启用主模型不可用时的独立备用切换</span></label>
+            <label class="field">
+              <span>切换模式</span>
+              <select name="aux.qq_backup.mode">
+                <option value="disabled">关闭</option>
+                <option value="custom_api">独立 HTTP API（支持工具调用）</option>
+                <option value="companion_duty">B站伴侣独立通道（高级）</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>协议</span>
+              <select name="aux.qq_backup.protocol">
+                <option value="openai_compatible">OpenAI 兼容</option>
+                <option value="gemini">Gemini 协议</option>
+              </select>
+            </label>
+            <label class="field"><span>主备用模型</span><input name="aux.qq_backup.model" spellcheck="false"></label>
+            <label class="field"><span>次级备用模型（可选）</span><input name="aux.qq_backup.fallback_model" spellcheck="false"></label>
+            <label class="field wide"><span>独立接口地址</span><input name="aux.qq_backup.base_url" spellcheck="false"></label>
+            <label class="field wide">
+              <span>QQ 备用 API Key <em class="secret-flag" data-secret="aux.qq_backup.api_key"></em></span>
+              <input type="password" name="aux.qq_backup.api_key" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+        </details>
+
+        <details class="sub">
+          <summary>上下文筛选与联网预搜索（默认纯本地规则，零额外费用）</summary>
+          <div class="grid">
+            <label class="field">
+              <span>@与续聊上下文筛选</span>
+              <select name="aux.context_judge.mode">
+                <option value="heuristic">本地规则（零调用）</option>
+                <option value="main_gateway">复用主网关轻量模型</option>
+                <option value="custom_api">独立 HTTP API</option>
+                <option value="dsh">DSH 文本筛选器</option>
+              </select>
+            </label>
+            <label class="field"><span>筛选模型</span><input name="aux.context_judge.model" spellcheck="false"></label>
+            <label class="field"><span>筛选接口地址</span><input name="aux.context_judge.base_url" spellcheck="false"></label>
+            <label class="field">
+              <span>筛选 API Key <em class="secret-flag" data-secret="aux.context_judge.api_key"></em></span>
+              <input type="password" name="aux.context_judge.api_key" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field toggle wide"><input type="checkbox" name="aux.search_routing.enabled"><span>启用轮前联网预搜索</span></label>
+            <label class="field">
+              <span>搜索意图判断</span>
+              <select name="aux.search_routing.judge_mode">
+                <option value="local_rules">本地规则（免费）</option>
+                <option value="main_gateway">复用主网关轻量模型</option>
+                <option value="custom_api">独立 HTTP API</option>
+                <option value="dsh">DSH 分类器</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>搜索引擎后端</span>
+              <select name="aux.search_routing.paid_search_mode">
+                <option value="disabled">仅免费公开抓取 / RSS</option>
+                <option value="deepseek">DeepSeek 搜索接口</option>
+              </select>
+            </label>
+            <label class="field"><span>搜索分类模型</span><input name="aux.search_routing.model" spellcheck="false"></label>
+            <label class="field"><span>搜索分类地址</span><input name="aux.search_routing.base_url" spellcheck="false"></label>
+            <label class="field wide">
+              <span>搜索分类 API Key <em class="secret-flag" data-secret="aux.search_routing.api_key"></em></span>
+              <input type="password" name="aux.search_routing.api_key" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+        </details>
+
+        <details class="sub">
+          <summary>定时巡查、专家求助与自动运维（默认全关）</summary>
+          <p class="muted">可按需开启服务看门狗，或接通独立运维模型 / Codex CLI。<span id="codexState"></span></p>
+          <div class="grid">
+            <label class="field toggle"><input type="checkbox" name="aux.ops.watchdog_enabled"><span>开启确定性健康巡查（无 LLM）</span></label>
+            <label class="field toggle"><input type="checkbox" name="aux.ops.terra_supervision_enabled"><span>开启定时风格与关系督导（Terra）</span></label>
+            <label class="field toggle"><input type="checkbox" name="aux.ops.codex_help_enabled"><span>开启复杂问题专家求助队列</span></label>
+            <label class="field toggle"><input type="checkbox" name="aux.ops.sol_repair_enabled"><span>开启自动代码修复（高级实验）</span></label>
+            <label class="field toggle wide"><input type="checkbox" name="aux.diary.fallback_enabled"><span>每日日记主模型失败时启用备用模型</span></label>
+            <label class="field">
+              <span>运维 Agent 后端</span>
+              <select name="aux.ops.backend">
+                <option value="codex_cli">Codex CLI（本地安装）</option>
+                <option value="main_gateway">复用主网关</option>
+                <option value="custom_api">独立 HTTP API</option>
+              </select>
+            </label>
+            <label class="field"><span>运维模型名</span><input name="aux.ops.model" spellcheck="false"></label>
+            <label class="field"><span>运维接口地址</span><input name="aux.ops.base_url" spellcheck="false"></label>
+            <label class="field">
+              <span>运维 API Key <em class="secret-flag" data-secret="aux.ops.api_key"></em></span>
+              <input type="password" name="aux.ops.api_key" autocomplete="off" spellcheck="false">
+            </label>
           </div>
         </details>
       </section>

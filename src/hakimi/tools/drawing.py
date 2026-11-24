@@ -3,10 +3,11 @@
 import base64
 import binascii
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 import http.client
 from io import BytesIO
 import json
+import re
 import socket
 import ssl
 import struct
@@ -17,7 +18,7 @@ from urllib.parse import urlsplit
 from PIL import Image
 
 from hakimi.tools.drawing_accounting import BudgetError, finish, reserve
-from hakimi.tools.drawing_settings import DrawingError, load_settings, public_ip, public_settings, request_path, save_settings
+from hakimi.tools.drawing_settings import DRAWING_TIMEOUT_SECONDS, DrawingError, load_settings, public_ip, public_settings, request_path, save_settings
 
 
 __all__ = ["DrawingError", "GeneratedImage", "generate", "public_settings", "save_settings"]
@@ -38,12 +39,15 @@ _ADDRESS_CONNECT_TIMEOUT = 8
 _FORMATS = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}
 _BLOCKED = {"SAFETY", "IMAGE_SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "IMAGE_PROHIBITED_CONTENT", "SPII"}
 _DEFINITE_REJECTIONS = {400, 401, 403, 404, 413, 415, 422, 429}
+_MODEL_ERRORS = {"model_not_found", "model_not_supported", "unsupported_model",
+                 "no_available_channel", "no_available_accounts", "model_not_available"}
 
 
 @dataclass(frozen=True)
 class GeneratedImage:
     data: bytes
     mime_type: str
+    models_tried: tuple = field(default=(), compare=False)
 
 
 def _remaining(deadline):
@@ -117,6 +121,38 @@ def _http_error(status):
     return DrawingError(code, message, http_status=status)
 
 
+def _provider_error(response):
+    status = response.status
+    failure = _http_error(status)
+    if status not in {400, 403, 404, 429, 500, 502, 503}:
+        return failure
+    try:
+        body = response.read(8193)
+        doc = json.loads(body) if len(body) <= 8192 else None
+    except (ValueError, RecursionError, OSError, http.client.HTTPException):
+        return failure
+    if not isinstance(doc, dict):
+        return failure
+    error = doc.get("error", doc)
+    if not isinstance(error, dict):
+        return failure
+    for block in (doc, error):
+        if any(k in block for k in ("candidates", "promptFeedback", "usageMetadata", "usage", "billing",
+                                    "actualCostUsd", "costUsd", "totalCostUsd", "actual_cost_usd",
+                                    "cost_usd", "total_cost_usd", "cost", "actual_cost")):
+            failure.receipt = block
+            return failure
+    code = str(error.get("code", "")).lower()
+    message = str(error.get("message", "")).lower()
+    if (code in _MODEL_ERRORS
+            or re.search(r"\bmodels?/[\w.-]+ is (?:not found|not supported) for (?:api version|generatecontent)\b", message)
+            or re.search(r"^(?:no available (?:channels?|accounts?)(?:$| for (?:the )?(?:group|model)\b)|"
+                         r"(?:unsupported|unknown) model\b|model [\w./-]+ (?:is |was )?not found\b)", message)
+            or re.search(r"^(?:当前分组下模型.{1,140}无可用渠道|模型.{1,140}(?:无可用渠道|不存在))", message)):
+        return DrawingError("drawing_model_unavailable", "绘图站点没有可用的已配置型号。", http_status=status)
+    return failure
+
+
 def _response_json(connection, path, key, payload):
     connection.request("POST", path, body=payload, headers={
         "Content-Type": "application/json", "Accept": "application/json",
@@ -124,7 +160,7 @@ def _response_json(connection, path, key, payload):
     })
     with connection.getresponse() as response:
         if not 200 <= response.status < 300:
-            raise _http_error(response.status)
+            raise _provider_error(response)
         if ((response.length is not None and response.length > _MAX_RESPONSE_BYTES)
                 or response.getheader("Content-Encoding", "identity").lower() != "identity"):
             raise DrawingError("drawing_response", "绘图服务返回的数据格式或大小超出支持范围。")
@@ -207,8 +243,9 @@ def _pick_image(data):
     raise DrawingError("drawing_no_image", "绘图服务没有返回可发送的图片。")
 
 
-def generate(base, creative_brief, *, timeout=90):
+def generate(base, creative_brief, *, timeout=DRAWING_TIMEOUT_SECONDS):
     """Submit just the creative brief and built-in direction, without chat history."""
+    deadline = time.monotonic() + min(DRAWING_TIMEOUT_SECONDS, timeout)
     brief = creative_brief.strip() if isinstance(creative_brief, str) else ""
     if not 0 < len(brief) <= _MAX_BRIEF:
         raise DrawingError("drawing_brief", "请提供一段不超过 3000 字的画面说明。")
@@ -216,36 +253,49 @@ def generate(base, creative_brief, *, timeout=90):
     if not settings["enabled"] or not settings["api_key"]:
         raise DrawingError("drawing_disabled", "绘图还未启用，请在控制台设置专用 API。")
     endpoint = urlsplit(settings["endpoint"])
-    path = request_path(endpoint.path, settings["model"])
+    model_root = request_path(endpoint.path, settings["model"]).rsplit("/", 1)[0]
+    models = [settings["model"], *settings["fallback_models"]]
     payload = json.dumps({
         "contents": [{"role": "user", "parts": [{"text": CREATIVE_PREFIX + brief}]}],
         "generationConfig": {"responseModalities": ["TEXT", "IMAGE"], "candidateCount": 1},
     }).encode("utf-8")
 
     receipt = call_id = None
-    rejected = attempted = False
-    deadline = time.monotonic() + timeout
+    rejected = False
+    tried = []
     try:
         try:
             call_id = reserve(base, settings)
-            with _https_connection(endpoint, deadline) as connection:
+            for model in models:
                 _remaining(deadline)
-                attempted = True
-                receipt = _response_json(connection, path, settings["api_key"], payload)
-        except DrawingError as exc:
-            rejected = exc.http_status in _DEFINITE_REJECTIONS
-            raise
+                with _https_connection(endpoint, deadline) as connection:
+                    _remaining(deadline)
+                    tried.append(model)
+                    rejected = False
+                    try:
+                        receipt = _response_json(connection, f"{model_root}/{model}:generateContent",
+                                                 settings["api_key"], payload)
+                    except DrawingError as exc:
+                        unavailable = exc.code == "drawing_model_unavailable"
+                        receipt = exc.receipt
+                        rejected = receipt is None and (unavailable or exc.http_status in _DEFINITE_REJECTIONS)
+                        if unavailable and model != models[-1]:
+                            continue
+                        raise
+                    break
         except (OSError, http.client.HTTPException):
             if time.monotonic() >= deadline:
                 raise DrawingError("drawing_timeout", "绘图服务响应超时。") from None
             raise DrawingError("drawing_connection", "绘图服务连接失败。") from None
         finally:
             if call_id is not None:
-                if attempted:
+                if tried:
                     finish(base, call_id, receipt, rejected=rejected)
                 else:
                     finish(base, call_id, None, not_submitted=True)
+        return replace(_pick_image(receipt), models_tried=tuple(tried))
+    except DrawingError as exc:
+        exc.models_tried = tuple(tried)
+        raise
     except BudgetError as exc:
         raise DrawingError(exc.code, str(exc)) from None
-
-    return _pick_image(receipt)

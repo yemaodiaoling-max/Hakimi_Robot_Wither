@@ -27,7 +27,9 @@ def setup_get() -> dict:
         "gateway": {"initialised": gateway["initialised"], "spent_usd": gateway["spent_usd"],
                     "period": gateway["period"], "requests": gateway["requests"]},
         "tiers": gw.TIER_LABELS,
-        "tools": {"dsh": bool(shutil.which("dsh")), "systemctl": bool(shutil.which("systemctl")),
+        "tools": {"dsh": bool(shutil.which("dsh") or st.paths.dsh_bin().joinpath("dsh").is_file()),
+                  "codex": bool(shutil.which("codex") or st.paths.codex_executable().is_file()),
+                  "systemctl": bool(shutil.which("systemctl")),
                   "qrcode": _has("qrcode"), "ffmpeg": bool(shutil.which("ffmpeg"))},
         "pet_connection": st.pet_connection(s),
         "root": str(st.root()),
@@ -119,6 +121,8 @@ def _check(data):
         from hakimi.gateway import server as gw
         config = gw.load_config()
         m = (data.get("model") or {})
+        if m.get("provider"):
+            config["upstream"]["protocol"] = "openai_compatible" if m["provider"] == "openai_compatible" else "gemini"
         if m.get("base_url"):
             config["upstream"]["base_url"] = st._url(m["base_url"], "model.base_url")
         if m.get("auth"):

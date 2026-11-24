@@ -47,7 +47,7 @@ MODULES = (
            ("/", "/review-history.html", "/setup.html")),
     Module("qq", "QQ 机器人", "QQ 官方机器人通道：群聊/私聊回复、表情包、数学排版、日记",
            ("hakimi-worker.service", "hakimi-agent.service", "hakimi-diary.timer"),
-           (("hakimi-help.service", "bin:codex"), ("hakimi-terra-watch.timer", "bin:codex")),
+           (("hakimi-help.service", "ops:codex_help"), ("hakimi-terra-watch.timer", "ops:supervisor")),
            ("/messages.html", "/identity.html")),
     Module("video", "视频机器人", "B 站看视频/直播、弹幕与评论，观看经历写入共享记忆",
            ("hakimi-bilibili-watcher.service", "hakimi-memory-bridge.timer"), (),
@@ -123,6 +123,24 @@ def units(root=None) -> list:
             continue
         result += list(module.units)
         for unit, requirement in module.optional_units:
+            if requirement.startswith("ops:"):
+                import shutil
+                from hakimi.models import aux_config
+                if not aux_config.has_config(root):
+                    if shutil.which("codex") or paths.codex_executable().is_file():
+                        result.append(unit)
+                    continue
+                ops = aux_config.ops_config(root)
+                backend = ops.get("backend", "codex_cli")
+                has_codex = bool(shutil.which("codex") or paths.codex_executable().is_file())
+                if requirement == "ops:codex_help":
+                    if ops.get("codex_help_enabled") and (backend != "codex_cli" or has_codex):
+                        result.append(unit)
+                elif requirement == "ops:supervisor":
+                    ai_ops = bool(ops.get("terra_supervision_enabled") or ops.get("sol_repair_enabled"))
+                    if ops.get("watchdog_enabled") or (ai_ops and (backend != "codex_cli" or has_codex)):
+                        result.append(unit)
+                continue
             if requirement.startswith("bin:"):
                 import shutil
                 if shutil.which(requirement[4:]):

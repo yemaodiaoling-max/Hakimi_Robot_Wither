@@ -147,8 +147,19 @@ def _mention_fallback(rows, anchors):
     return [r for r in rows if str(r.get('message_id')) in chosen]
 
 
+def _continuation_fallback(rows, *, own_message_ids=()):
+    batch = text_batch(rows, own_message_ids=own_message_ids)
+    return [row['message_id'] for row in batch if row.get('audience') == 'hakimi']
+
+
 def mention_context(entry,rows,anchors,base,*,previous_reply='',own_message_ids=(),on_ready=None):
     """Poll a globally serialized review with an bounded subprocess budget."""
+    from hakimi.models import aux_config
+    if aux_config.has_config(base) and aux_config.context_judge_config(base).get('mode') == 'heuristic':
+        from hakimi.core.context_window import chronological_rows
+        by_id = {str(r['message_id']): dict(r) for r in [*rows[-80:], *anchors]}
+        candidates = chronological_rows(list(by_id.values()))
+        return _mention_fallback(candidates, anchors)
     focus=[str(r['message_id']) for r in anchors]
     review=entry.get('mention_review')
     if review is None:
@@ -206,6 +217,9 @@ def continuation_context(entry,rows,previous_reply,base,*,context=(),own_message
     Call only once the listening window closes. The first call freezes candidates;
     subsequent polls must use the same entry until its result is handled.
     """
+    from hakimi.models import aux_config
+    if aux_config.has_config(base) and aux_config.context_judge_config(base).get('mode') == 'heuristic':
+        return _continuation_fallback(rows, own_message_ids=own_message_ids)
     review=entry.get('continuation_review')
     if review is None:
         candidates=[dict(r) for r in rows]
@@ -224,5 +238,25 @@ def continuation_context(entry,rows,previous_reply,base,*,context=(),own_message
 
 
 def run_judge(task, base, timeout_seconds=30, *, thinking="low"):
+    from hakimi.models import aux_config
+    if aux_config.has_config(base):
+        cfg = aux_config.context_judge_config(base)
+        mode = cfg.get('mode')
+        if mode == 'main_gateway':
+            from hakimi.models import gateway_text
+            from hakimi.models.dsh_text_judge import parse_selection
+            res = gateway_text.complete_via_gateway(
+                base, task, tier=cfg.get('model') or 'gemini-4-hydrogen',
+                json_mode=True, max_tokens=2048, timeout=timeout_seconds,
+            )
+            return parse_selection(res['text'])
+        if mode == 'custom_api':
+            from hakimi.models import gateway_text
+            from hakimi.models.dsh_text_judge import parse_selection
+            res = gateway_text.complete_via_http_api(
+                cfg, [{'role': 'user', 'content': task}],
+                json_mode=True, max_tokens=2048, timeout=timeout_seconds,
+            )
+            return parse_selection(res['text'])
     from hakimi.models.dsh_text_judge import run_judge as invoke
     return invoke(task, base, timeout_seconds=timeout_seconds, thinking=thinking)

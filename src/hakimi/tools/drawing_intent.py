@@ -8,6 +8,7 @@ from hakimi.core.context_window import chronological_rows, select_context
 TOOL = 'image.draw'
 BRIEF_LIMIT = 280
 INSTRUCTION = '按对方想画的主题，自己选场景、构图和一个贴合对方的有趣细节，用一句话构思并发图。'
+COOLDOWN_NOTE = '绘图正在冷却。请用自己的口吻接对方的话，本轮无需再画或报恢复时间。'
 
 _TEXT_MARKUP = re.compile(r'\[引用[^\n]*?"\]|\[[^\]\n]*\]|<[^>\n]*>|https?://\S+|`[^`\n]*`')
 _QUOTED = re.compile(r'“[^”\n]*”|「[^」\n]*」|『[^』\n]*』|‘[^’\n]*’|"[^"\n]*"')
@@ -153,16 +154,23 @@ def requested(payload):
     return None
 
 
-def offered(payload, base):
+def availability(payload, base):
     target = requested(payload)
     if target is None or not allows_generation(payload, target):
-        return False
+        return None
     from hakimi.tools.drawing import DrawingError, public_settings
+    from hakimi.tools.drawing_accounting import cooling_down
     try:
         config = public_settings(base)
     except DrawingError:
-        return False
-    return bool(config.get('enabled') and config.get('has_api_key'))
+        return None
+    if config.get('enabled') and config.get('has_api_key'):
+        return 'cooldown' if cooling_down(base) else 'ready'
+    return None
+
+
+def offered(payload, base):
+    return availability(payload, base) == 'ready'
 
 
 def allows_generation(payload, target):

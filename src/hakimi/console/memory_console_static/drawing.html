@@ -25,9 +25,14 @@
         <p id="drawing-endpoint-help">填写 HTTPS API 基础地址或完整的 Gemini generateContent 接口地址。</p>
       </div>
       <div class="drawing-field">
-        <label for="drawing-model">绘图模型</label>
-        <input id="drawing-model" type="text" placeholder="gemini-2.5-flash-image" aria-describedby="drawing-model-help" required maxlength="135" spellcheck="false">
+        <label for="drawing-model">首选绘图型号</label>
+        <input id="drawing-model" type="text" placeholder="gemini-3.1-flash-image" aria-describedby="drawing-model-help" required maxlength="135" spellcheck="false">
         <p id="drawing-model-help">填写该站点提供的图像生成模型标识。</p>
+      </div>
+      <div class="drawing-field">
+        <label for="drawing-fallbacks">备用绘图型号</label>
+        <textarea id="drawing-fallbacks" rows="4" maxlength="1100" aria-describedby="drawing-fallbacks-help" spellcheck="false"></textarea>
+        <p id="drawing-fallbacks-help">每行一个，最多八个。站点明确拒绝当前型号时，从上往下尝试。一份申请共用一个名额。留空可关闭备用。</p>
       </div>
       <div class="drawing-field">
         <label for="drawing-key">API Key</label>

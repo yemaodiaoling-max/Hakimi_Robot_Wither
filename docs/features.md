@@ -34,19 +34,34 @@
 
 ## Gemini 主回复（`gemini`）
 
-经私有 Vertex 网关直连 Gemini，按群保留会话，月度预算封顶。
+经私有 Vertex 网关直连 Gemini，按群保留会话，月度用量由管理员手动控制。
 
 - 模块：`hakimi.models.vertex_route`、`hakimi.models.vertex_session`、`hakimi.models.scoped_session`、`hakimi.models.provider_health`、`hakimi.ops.cloud_service`
-- 模型可调用的工具：`web.search`、`web.read`、`time.now`、`calculator.evaluate`、`tools.list`、`runtime.status`
+- 模型可调用的工具：`web.search`、`web.read`、`web.sources`、`time.now`、`calculator.evaluate`、`tools.list`、`runtime.status`
 - 开关：service `hakimi-agent`；config `root:state/vertex_route.json:enabled`（Vertex 直连）
 
-## DSH 兜底（`dsh_fallback`）
+## 备用模型兜底（`dsh_fallback`）
 
-Gemini 超时或不可用时由 DSH 接管，同一套工具与回执。
+主模型超时或不可用时由独立 HTTP API 或 DSH 接管，默认关闭。
 
-- 模块：`hakimi.models.fallback_supervisor`、`hakimi.models.fallback_runner`、`hakimi.models.fallback_prompt`、`hakimi.models.fallback_commit`、`hakimi.models.dsh_tools`
+- 模块：`hakimi.models.fallback_supervisor`、`hakimi.models.fallback_http`、`hakimi.models.fallback_runner`、`hakimi.models.fallback_prompt`、`hakimi.models.fallback_commit`、`hakimi.models.dsh_tools`、`hakimi.models.aux_config`
 - 模型可调用的工具：`image.read`、`bots.propose`
-- 开关：config `runtime:config.json:fallback.enabled`
+- 开关：config `runtime:config.json:fallback.enabled`；config `root:aux_config.json:fallback.enabled`（辅助总配置开关）
+
+## QQ 主模型热切换通道（`qq_backup`）
+
+主回复达到额度或故障时，切换到独立的兼容 API 或伴侣通道，默认关闭。
+
+- 模块：`hakimi.models.video_hydrogen`、`hakimi.models.hydrogen_duty`、`hakimi.models.gateway_text`
+- 开关：config `root:aux_config.json:qq_backup.enabled`
+
+## QQ语音（`voice`）
+
+本地CPU转写、会话私有原文与明确请求时的原创音色/短哼唱。
+
+- 模块：`hakimi.voice.store`、`hakimi.voice.worker`、`hakimi.voice.delivery`、`hakimi.voice.tts`
+- 模型可调用的工具：`voice.read`、`voice.speak`、`voice.hum`
+- 开关：service `hakimi-voice`；config `root:voice_config.json:enabled`；config `root:voice_config.json:tts_enabled`（明确请求发声）
 
 ## 长期记忆（`memory`）
 
@@ -58,10 +73,11 @@ Gemini 超时或不可用时由 DSH 接管，同一套工具与回执。
 
 ## 日常事件卡（`daily_events`）
 
-DSH 在既有人物笔记批次中整理少量真实事件，原文清理后保留短摘要与向量。
+在既有人物笔记批次中整理少量真实事件，支持复用主网关或独立复盘 API。
 
 - 模块：`hakimi.memory.daily_events`、`hakimi.memory.impression_events`、`hakimi.memory.relationship_events`、`hakimi.memory.post_reply_review`、`hakimi.memory.review_runtime`、`hakimi.memory.review_audit`、`hakimi.memory.relationship_history`、`hakimi.memory.store_maintenance`
-- 备注：真实回复窗口结束后异步复盘，独立单槽 DSH；保留有界短审核理由与来源，区分事实、关系与原话角色。Gemini 继续书写人物印象。
+- 开关：config `root:aux_config.json:review.enabled`
+- 备注：真实回复窗口结束后异步复盘，可通过 aux_config.json 配置走主网关、独立 HTTP API、伴侣通道或关闭；保留有界短审核理由与来源，区分事实、关系与原话角色。
 
 ## 关系网（`social`）
 
@@ -91,6 +107,14 @@ DSH 在既有人物笔记批次中整理少量真实事件，原文清理后保�
 
 - 模块：`hakimi.memory.personal_review`、`hakimi.memory.review_select`
 
+## QQ 绘图（`drawing`）
+
+收到绘图请求时由哈基米构思画面，使用独立的 Gemini 绘图站点生成并回传图片。
+
+- 模块：`hakimi.tools.drawing`、`hakimi.tools.drawing_intent`、`hakimi.tools.drawing_delivery`、`hakimi.tools.drawing_accounting`
+- 模型可调用的工具：`image.draw`
+- 开关：config `runtime:state/drawing_provider.json:enabled`（启用 QQ 绘图）
+
 ## 数学排版（`math`）
 
 Markdown/TeX 公式本地排成图片发送。
@@ -118,7 +142,7 @@ Markdown/TeX 公式本地排成图片发送。
 读取本轮授权的图片；按需抽帧观看 B 站与 QQ 小程序视频。
 
 - 模块：`hakimi.transport.image_permissions`、`hakimi.tools.bilibili_video`、`hakimi.models.fallback_media`
-- 模型可调用的工具：`images.list`、`video.watch`、`video.watch_miniapp`
+- 模型可调用的工具：`images.list`、`video.watch`、`video.watch_attachment`、`video.watch_miniapp`
 
 ## 私有日记（`diary`）
 
@@ -141,19 +165,19 @@ Markdown/TeX 公式本地排成图片发送。
 
 - 模块：`hakimi.tools.feeding`
 
-## Codex 专家求助（`codex_help`）
+## 专家求助队列（`codex_help`）
 
-复杂问题或故障分析时排队请 Codex 给内部分析（有额度）。
+复杂问题或故障分析时排队请独立模型或 Codex CLI 给内部分析，默认关闭。
 
 - 模块：`hakimi.features.codex_help`、`hakimi.features.codex_help_runner`、`hakimi.features.codex_help_service`
-- 开关：config `root:codex_help_config.json:enabled`；service `hakimi-help`
+- 开关：config `root:codex_help_config.json:enabled`；config `root:aux_config.json:ops.codex_help_enabled`（总配置开关）；service `hakimi-help`
 
 ## 健康巡查 / Terra 督导 / Sol 修复（`supervision`）
 
-每 5 分钟巡查；Terra 两小时一次风格与关系评价；可确认的进程故障由 Sol 最小修复。
+按独立开关执行服务看门狗、Terra 两小时评价及 Sol 最小修复，默认全部关闭。
 
 - 模块：`hakimi.ops.cloud_supervisor`、`hakimi.ops.terra_supervision`、`hakimi.ops.terra_budget`、`hakimi.ops.sol_repair`
-- 开关：timer `hakimi-terra-watch.timer`
+- 开关：config `root:aux_config.json:ops.watchdog_enabled`（确定性看门狗）；config `root:aux_config.json:ops.terra_supervision_enabled`（Terra督导）；config `root:aux_config.json:ops.sol_repair_enabled`（Sol修复）；timer `hakimi-terra-watch.timer`
 
 ## 模型试用（`model_trial`）
 

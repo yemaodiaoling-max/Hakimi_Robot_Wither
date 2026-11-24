@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "review": {
+    "enabled": true,
+    "mode": "main_gateway",
+    "model": "gemini-4-hydrogen",
+    "protocol": "openai_compatible",
+    "base_url": "",
+    "api_key_file": "",
+    "credential_key": "review",
+    "output_limit_parameter": "max_tokens",
+    "reasoning_effort": "low",
+    "config_path": ""
+  },
+  "qq_backup": {
+    "enabled": false,
+    "mode": "disabled",
+    "protocol": "openai_compatible",
+    "base_url": "",
+    "model": "",
+    "fallback_model": "",
+    "api_key_file": "",
+    "credential_key": "qq_backup",
+    "output_limit_parameter": "max_tokens",
+    "reasoning_effort": "low",
+    "config_path": ""
+  },
+  "context_judge": {
+    "mode": "heuristic",
+    "model": "gemini-4-hydrogen",
+    "protocol": "openai_compatible",
+    "base_url": "",
+    "api_key_file": "",
+    "credential_key": "context_judge",
+    "output_limit_parameter": "max_tokens",
+    "reasoning_effort": "low"
+  },
+  "search_routing": {
+    "enabled": false,
+    "judge_mode": "local_rules",
+    "model": "gemini-4-hydrogen",
+    "protocol": "openai_compatible",
+    "base_url": "",
+    "api_key_file": "",
+    "credential_key": "search_judge",
+    "paid_search_mode": "disabled"
+  },
+  "fallback": {
+    "enabled": false,
+    "backend": "http_api",
+    "protocol": "openai_compatible",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-chat",
+    "api_key_file": "",
+    "credential_key": "fallback"
+  },
+  "diary": {
+    "fallback_enabled": false
+  },
+  "ops": {
+    "watchdog_enabled": false,
+    "terra_supervision_enabled": false,
+    "sol_repair_enabled": false,
+    "codex_help_enabled": false,
+    "backend": "codex_cli",
+    "model": "",
+    "protocol": "openai_compatible",
+    "base_url": "",
+    "api_key_file": "",
+    "credential_key": "ops"
+  }
+}

@@ -15,6 +15,7 @@ hakimi config show config.json --where runtime
 | 文件 | 位置 | 内容 |
 |---|---|---|
 | `hakimi_settings.json` | root | 面板里的全部非密钥设置 |
+| `aux_config.json` | root | 独立辅助模块开关与 API/Agent 路由（复盘、热备、上下文筛选、搜索、日记兜底、运维巡查） |
 | `modules.json` | root | 启用的模块 |
 | `owner.json` | root | 主人称呼、ID、其它机器人账号 |
 | `official_test_config.json` | root | QQ 官方通道：AppID、测试群、模式、私聊/主动发言 |

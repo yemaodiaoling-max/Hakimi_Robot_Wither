@@ -15,9 +15,13 @@ from hakimi.tools.drawing_accounting import validate_limits
 
 
 DEFAULT_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta"
-DEFAULT_MODEL = "gemini-3.1-flash-lite-image"
+DEFAULT_MODEL = "gemini-3.1-flash-image"
+DRAWING_TIMEOUT_SECONDS = 180
+DEFAULT_FALLBACKS = ("gemini-nano-banana-2.1", "gemini-3.1-flash-image-preview",
+                     "gemini-3-pro-image", "gemini-3-pro-image-preview")
 _LIMIT_FIELDS = ("daily_usd_limit", "monthly_usd_limit", "reserve_usd")
 _DEFAULTS = {"enabled": False, "endpoint": DEFAULT_ENDPOINT, "model": DEFAULT_MODEL,
+             "fallback_models": DEFAULT_FALLBACKS,
              "api_key": "", **dict.fromkeys(_LIMIT_FIELDS)}
 _SAVE_LOCK = threading.Lock()
 _MODEL = r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}"
@@ -32,6 +36,8 @@ class DrawingError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.http_status = http_status
+        self.models_tried = ()
+        self.receipt = None
 
 
 def _endpoint_error():
@@ -100,18 +106,27 @@ def request_path(path, model):
     return f"{path}/models/{model}:generateContent"
 
 
+def _model_name(value):
+    if isinstance(value, str):
+        value = value.strip().removeprefix("models/")
+        if re.fullmatch(_MODEL, value):
+            return value
+    raise DrawingError("drawing_model", "请输入有效的 Gemini 绘图模型名。")
+
+
 def _validate(values, previous):
     enabled = values.get("enabled", previous["enabled"])
     if type(enabled) is not bool:
         raise DrawingError("drawing_enabled", "请选择是否启用绘图。")
     endpoint = _parse_endpoint(values.get("endpoint", previous["endpoint"]))
     parsed = urlsplit(endpoint)
-    model = values.get("model", previous["model"])
-    if isinstance(model, str):
-        model = model.strip().removeprefix("models/")
-    if not isinstance(model, str) or not re.fullmatch(_MODEL, model):
-        raise DrawingError("drawing_model", "请输入有效的 Gemini 绘图模型名。")
+    model = _model_name(values.get("model", previous["model"]))
     request_path(parsed.path, model)
+    fallbacks = values.get("fallback_models", previous["fallback_models"])
+    if not isinstance(fallbacks, (list, tuple)) or len(fallbacks) > 8:
+        raise DrawingError("drawing_fallbacks", "备用绘图模型最多可填写八个。")
+    models = dict.fromkeys(_model_name(item) for item in fallbacks)
+    models.pop(model, None)
 
     api_key = values.get("api_key", "")
     if isinstance(api_key, str):
@@ -124,14 +139,15 @@ def _validate(values, previous):
     if enabled and not api_key:
         raise DrawingError("drawing_key_required", "请先保存绘图 API 密钥。")
     # Protect against accidentally pasting the stored credential into a visible field.
-    if api_key and (api_key == model or api_key in (parsed.hostname or "").split(".")
+    if api_key and (api_key == model or api_key in models or api_key in (parsed.hostname or "").split(".")
                     or api_key in parsed.path.split("/")):
         raise DrawingError("drawing_key_location", "请将绘图密钥填写在专用密钥栏。")
     try:
         limits = validate_limits({field: values.get(field, previous[field]) for field in _LIMIT_FIELDS})
     except ValueError:
         raise DrawingError("drawing_budget_config", "请检查绘图费用上限和单次预留金额。") from None
-    return {"enabled": enabled, "endpoint": endpoint, "model": model, "api_key": api_key, **limits}
+    return {"enabled": enabled, "endpoint": endpoint, "model": model, "fallback_models": list(models),
+            "api_key": api_key, **limits}
 
 
 def _settings_path(base):
@@ -149,13 +165,14 @@ def load_settings(base):
             raise ValueError
         return _validate(data, _DEFAULTS)
     except FileNotFoundError:
-        return dict(_DEFAULTS)
+        return {**_DEFAULTS, "fallback_models": list(DEFAULT_FALLBACKS)}
     except (OSError, ValueError, RecursionError, DrawingError):
         raise DrawingError("drawing_settings_unreadable", "绘图配置读取失败，请在控制台检查。") from None
 
 
 def _public(settings):
     return {"enabled": settings["enabled"], "endpoint": settings["endpoint"], "model": settings["model"],
+            "fallback_models": settings["fallback_models"],
             "has_api_key": bool(settings["api_key"]), **{field: settings[field] for field in _LIMIT_FIELDS}}
 
 

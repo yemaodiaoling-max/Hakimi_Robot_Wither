@@ -44,7 +44,7 @@ One required **memory core** plus three optional modules, in any combination: in
 
 - The code is an installable Python package `hakimi` (`src/hakimi/`); the video module is the `bili_companion/` package in the same repository.
 - Runtime data (configuration, memory database, diary, delivery records) lives in an **instance folder** (default `~/hakimi-data`), fully separate from the code.
-- Every model call goes only to the local gateway at `https://127.0.0.1:18765`, which forwards it to the upstream you configure (Google AI Studio or any Gemini-compatible endpoint).
+- Out of the box, **one single API** is enough: every core call goes through the local gateway at `https://127.0.0.1:18765` to the upstream you configure (Google Gemini, Gemini-compatible, or any OpenAI-compatible endpoint).
 
 ## Features
 
@@ -52,7 +52,7 @@ One required **memory core** plus three optional modules, in any combination: in
 - Replies immediately to @-mentions and private messages; otherwise it collects context and scores each turn before deciding to speak, and yields in busy groups.
 - Starts a topic on its own when a group has been quiet for a while (configurable time windows).
 - Per-user rate limit: one person can trigger at most 7 replies per 30 minutes, which stops spam and keeps costs down.
-- When the main model times out or is unavailable, a DeepSeek fallback can take over with the same tools.
+- Fallback responders, separate review/backup APIs, LLM context judges, search pre-classifiers, and ops supervision agents are **off by default or reuse the main gateway**—and can each be enabled and pointed at separate APIs or CLIs in the setup panel.
 
 **Memory and relationships**
 - Messages are stored verbatim, with full-text plus optional semantic hybrid search; memory is scoped per group, so private chats never leak into group replies.
@@ -72,7 +72,7 @@ One required **memory core** plus three optional modules, in any combination: in
 
 **Operations**
 - Local model gateway: one ledger, cost estimated from your unit prices, optional monthly cap; at the cap the bot switches to the fallback model or pauses video watching.
-- Optional health checks and automatic repair (requires the `codex` CLI).
+- Optional health checks, style supervision, and automatic repair (off by default; configurable in the panel to use the main gateway, a custom HTTP API, or the `codex` CLI).
 
 The full list, with the switch for each feature, is in [docs/features.md](docs/features.md) (Chinese).
 
@@ -100,7 +100,7 @@ HAKIMI_ROOT=~/hakimi-data .venv/bin/hakimi setup url
 Open the printed `http://127.0.0.1:18768/setup.html#token=...` in your browser and fill in:
 
 1. **Modules**: tick the modules you want.
-2. **Model and key**: a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey) (or any Gemini-compatible endpoint). Click “检测” (check) to list the available models, then choose the main, light and video models; optionally set a monthly spending cap.
+2. **Model and key**: a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey) or switch to **OpenAI-compatible** for DeepSeek / OpenRouter / local endpoints. Click “检测” (check) to list models, then pick your main and light models.
 3. **Owner and persona**: the bot's name, what it should call you, and your ID.
 4. **QQ bot**: create a bot on the [QQ open platform](https://q.qq.com) and enter its AppID, AppSecret and test group number.
 5. **Bilibili**: log in by QR code (or paste a cookie); optionally choose a priority live room.

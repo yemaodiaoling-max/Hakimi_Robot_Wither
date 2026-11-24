@@ -87,12 +87,15 @@ def _run(name,args,timeout,base,payload,*,transport=None):
         total_seconds=min(60,float(settings.get('total_web_seconds',40))),timeout=min(float(timeout),15))
     except (TimeoutError,ValueError):return {'error':'WEB_TURN_LIMIT','network_used':False}
     deadline=time.monotonic()+allowance
+    from hakimi.models import aux_config
+    paid_mode = aux_config.search_routing_config(base)['paid_search_mode'] if aux_config.has_config(base) else 'deepseek'
     if name=='web.search':
         query=str(args.get('query') or '').strip()[:128]
         if not query:return {'error':'WEB_EMPTY_QUERY','network_used':False}
         native={}
-        try:native=_paid('search',{'query':query,'count':5,'need_content':True},base,settings,min(8,allowance),transport)
-        except (BudgetUnavailable,OSError):pass
+        if paid_mode == 'deepseek':
+            try:native=_paid('search',{'query':query,'count':5,'need_content':True},base,settings,min(8,allowance),transport)
+            except (BudgetUnavailable,OSError):pass
         items=(native.get('data') or {}).get('results',[])
         accepted=[]
         for item in items:
@@ -117,8 +120,9 @@ def _run(name,args,timeout,base,payload,*,transport=None):
                 'guidance':'来源日期按published_at；search_snippet只作候选，不等于核实。需要细节再web.read。国际服公告不可当作国服。引用来源用[source_id]，如[W1]。'}
     if name=='web.read':
         result={}
-        try:result=_paid('fetch',{'url':args['url']},base,settings,min(8,allowance),transport)
-        except (BudgetUnavailable,OSError):pass
+        if paid_mode == 'deepseek':
+            try:result=_paid('fetch',{'url':args['url']},base,settings,min(8,allowance),transport)
+            except (BudgetUnavailable,OSError):pass
         data=result.get('data') or {}
         if data.get('content'):
             item=web_quality.source(dict(data,url=args['url'],provider='deepseek_fetch'),read=True)

@@ -10,7 +10,9 @@ from pathlib import Path
 
 from hakimi.bridge.interaction_policy import blocked_outgoing_topic
 from hakimi.core.runtime_io import atomic_replace
-from hakimi.tools.drawing_intent import BRIEF_LIMIT, TOOL, allows_generation, request_id, requested
+from hakimi.tools.drawing_accounting import IMAGE_QUOTA_ERRORS
+from hakimi.tools.drawing_intent import BRIEF_LIMIT, COOLDOWN_NOTE, TOOL, allows_generation, request_id, requested
+from hakimi.tools.drawing_settings import DRAWING_TIMEOUT_SECONDS
 from hakimi.transport.file_delivery import directory, from_segment, resolve
 
 IMAGE_EXTENSION = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp'}
@@ -104,6 +106,10 @@ def _stage(base, session, drawing_id, image):
     return f'[CQ:file,name={path.name},stamp={stamp},mode=auto]'
 
 
+def _cooldown_feedback():
+    return {'error': 'drawing_cooldown', 'feedback': COOLDOWN_NOTE}
+
+
 def draw(base, coordinator, token, provider, arguments, timeout=None):
     from hakimi.tools.drawing import DrawingError, generate, public_settings
     from hakimi.tools.math_render import log_tool_call
@@ -134,8 +140,8 @@ def draw(base, coordinator, token, provider, arguments, timeout=None):
     session = payload['session_key']
     if not _official_route_available(base, session):
         return {'error': 'drawing_route_unavailable', 'message': '这个会话现在发不了画。'}
-    remaining = min(90, state['deadline'] - time.time() - 2, timeout if timeout is not None else 90)
-    if remaining < 1:
+    limit = DRAWING_TIMEOUT_SECONDS if timeout is None else min(timeout, DRAWING_TIMEOUT_SECONDS)
+    if limit < 1 or state['deadline'] - coordinator.clock() <= 2:
         return {'error': 'drawing_deadline', 'message': '这轮来不及画图了。'}
     drawing_id = request_id(session, target)
     try:
@@ -146,15 +152,27 @@ def draw(base, coordinator, token, provider, arguments, timeout=None):
                 status, reply_id = db.execute('SELECT status,reply_id FROM drawings WHERE id=?', (drawing_id,)).fetchone()
                 if status in {'queued', 'delivered'}:
                     return {'ok': True, 'status': status, 'reply_id': reply_id}
+                if status == 'drawing_cooldown':
+                    return _cooldown_feedback()
                 return {'error': 'drawing_already_attempted', 'status': status}
-        if not coordinator.check_token(token, provider):
+        deadline = coordinator.drawing_deadline(token, provider, limit + 2)
+        if deadline is None:
             _record(base, drawing_id, 'stale_owner')
             return {'error': 'turn_expired'}
+        remaining = min(limit, deadline - coordinator.clock() - 2)
+        if remaining < 1:
+            _record(base, drawing_id, 'deadline_expired')
+            return {'error': 'drawing_deadline', 'message': '这轮来不及画图了。'}
         try:
             image = generate(base, creative_brief.strip(), timeout=remaining)
         except DrawingError as exc:
+            if exc.code in IMAGE_QUOTA_ERRORS:
+                _record(base, drawing_id, 'drawing_cooldown')
+                log_tool_call(base, TOOL, 'cooldown', provider=provider, error=exc.code)
+                return _cooldown_feedback()
             _record(base, drawing_id, 'generation_failed')
-            log_tool_call(base, TOOL, 'generation_failed', provider=provider, error=exc.code)
+            log_tool_call(base, TOOL, 'generation_failed', provider=provider, error=exc.code,
+                          http_status=exc.http_status, models_tried=exc.models_tried)
             return {'error': exc.code, 'message': str(exc)}
         if not coordinator.check_token(token, provider):
             _record(base, drawing_id, 'stale_owner')
@@ -177,7 +195,7 @@ def draw(base, coordinator, token, provider, arguments, timeout=None):
         _record(base, drawing_id, 'queued', reply['reply_id'])
     except (OSError, sqlite3.Error):
         log_tool_call(base, TOOL, 'receipt_error_after_submit', provider=provider)
-    log_tool_call(base, TOOL, 'queued', provider=provider)
+    log_tool_call(base, TOOL, 'queued', provider=provider, models_tried=image.models_tried)
     return {'ok': True, 'status': 'queued', 'reply_id': reply['reply_id']}
 
 

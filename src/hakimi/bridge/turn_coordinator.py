@@ -980,6 +980,19 @@ class TurnCoordinator:
         with self._locked():
             return self._matches(self._load_ready(), token, provider)
 
+    def drawing_deadline(self, token, provider, seconds):
+        """Let an admitted fallback draw finish within the original turn lifetime."""
+        with self._locked():
+            state = self._load_ready()
+            if not self._matches(state, token, provider) or state.get('reply_id'):
+                return None
+            if state['status'] == 'fallback_active':
+                until = min(self.clock() + seconds, state['expires_at'], self._original_expiry(state))
+                if until > state['deadline']:
+                    state['deadline'] = until
+                    self._save(state)
+            return state['deadline']
+
     def select_mention(self, token, provider, uid):
         """Keep the tool's resolved recipient across model rounds and CLI processes."""
         with self._locked():

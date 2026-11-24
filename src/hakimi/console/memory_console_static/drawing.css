@@ -41,10 +41,17 @@
 .drawing-field label {
   font-weight: 600;
 }
-.drawing-field input {
+.drawing-field input,
+.drawing-field textarea {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--shell-line, #496175);
+}
+.drawing-field textarea {
+  resize: vertical;
+  font: inherit;
+  color: inherit;
+  background: var(--shell-bg, #111b28);
 }
 .drawing-field p {
   font-size: .875rem;

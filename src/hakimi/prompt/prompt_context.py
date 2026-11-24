@@ -429,6 +429,9 @@ def build_context(data, base=BASE_DIR, now=None, *, self_history_snapshot=None):
     if failures:context['voice_attachment_failures']=failures
     if any('voice.read message_id=' in str(row.get('text','')) for row in messages) or context.get('quoted_voice_evidence') or failures:
         context['voice_guidance']='转写或有同音误字，重要信息先确认；voice.read 可读本会话原文。'
+    from hakimi.tools.drawing_intent import COOLDOWN_NOTE, availability as drawing_availability
+    if drawing_availability(data, base) == 'cooldown':
+        context['drawing_status'] = COOLDOWN_NOTE
     return context
 
 

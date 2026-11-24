@@ -246,23 +246,28 @@ def chat_tools(payload):
 
 
 def chat_request(session, payload, timeout, config, root, model):
-    provider = 'argon_backup'
+    from hakimi.gateway import openai_compat
+    provider = config.get('provider_name', 'argon_backup')
     profile = config.get('settings') or json.loads(Path(config['profile']).read_text())
     if profile.get('activated') is not True or profile.get('provider') != 'openai_compatible':
         raise OSError('argon_profile_inactive')
     origin = profile['base_url'].rstrip('/')
-    if not origin.startswith('https://'): raise RuntimeError('argon_profile_invalid')
-    key = Path(profile['api_key_file']).read_text().strip()
+    if not origin.startswith('https://') and not origin.startswith(('http://127.0.0.1', 'http://localhost')):
+        raise RuntimeError('argon_profile_invalid')
+    key = str(profile['api_key']).strip() if profile.get('api_key') else Path(profile['api_key_file']).read_text().strip()
     limit_name = profile.get('output_limit_parameter', 'max_tokens')
     if limit_name not in {'max_tokens', 'max_completion_tokens'}: raise RuntimeError('argon_profile_invalid')
     body = {'model': model, 'messages': messages(payload),
-            'stream': True, 'stream_options': {'include_usage': True}, limit_name: 8192,
-            'reasoning_effort': 'low'}
+            'stream': True, 'stream_options': {'include_usage': True}, limit_name: 8192}
+    effort = profile.get('reasoning_effort', 'low')
+    if effort in {'off', 'low', 'medium', 'high'}:
+        body['reasoning_effort'] = effort
     tools, name_map = chat_tools(payload)
     if tools:
         body['tools'] = tools
     wire = json.dumps(body, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
-    request = Request(origin+'/chat/completions', data=wire, headers={'Authorization': 'Bearer '+key, 'Content-Type': 'application/json'})
+    chat_url = origin + '/chat/completions' if provider == 'argon_backup' else openai_compat.openai_chat_url(origin)
+    request = Request(chat_url, data=wire, headers={'Authorization': 'Bearer '+key, 'Content-Type': 'application/json'})
     failure = provider + '_failed'
     session.last_error = {'provider': provider, 'model': model, 'message': failure}
     request_id = uuid.uuid4().hex

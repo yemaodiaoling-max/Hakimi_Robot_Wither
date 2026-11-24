@@ -15,6 +15,7 @@
   const fields = document.getElementById('drawing-fields');
   const endpoint = document.getElementById('drawing-endpoint');
   const model = document.getElementById('drawing-model');
+  const fallbacks = document.getElementById('drawing-fallbacks');
   const key = document.getElementById('drawing-key');
   const keyHelp = document.getElementById('drawing-key-help');
   const enabled = document.getElementById('drawing-enabled');
@@ -52,6 +53,7 @@
   function render(settings) {
     endpoint.value = settings.endpoint || '';
     model.value = settings.model || '';
+    fallbacks.value = settings.fallback_models.join('\n');
     enabled.checked = settings.enabled;
     key.value = '';
     keyHelp.textContent = settings.has_api_key
@@ -108,6 +110,7 @@
     event.preventDefault();
     if (fields.disabled) return;
     const settings = {endpoint: endpoint.value.trim(), model: model.value.trim(), enabled: enabled.checked};
+    settings.fallback_models = fallbacks.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (key.value.trim()) settings.api_key = key.value.trim();
     key.value = '';
     for (const [name, input] of Object.entries(budget)) settings[name] = input.value.trim();

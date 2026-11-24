@@ -33,6 +33,8 @@ class ConfigFile:
 CONFIGS = (
     ConfigFile("task_routing.json", ("root",), "主聊天轮次模型选择：single/dual；生产配置为日常 Hydrogen、复杂任务 Carbon",
                {"mode": str, "single_model": str}, optional=True),
+    ConfigFile("aux_config.json", ("root",), "独立辅助模块与扩展 API/Agent 配置（复盘、备用模型、上下文筛选、搜索路由、运维巡查）",
+               {"version": int}, optional=True),
     ConfigFile("config.json", ("root", "runtime"),
                "机器人主配置：身份与群范围、投递节奏、参与策略、DSH 兜底、调度、表情包、按群回复上限",
                {"bot_profile": dict, "delivery_policy": dict, "participation_policy": dict, "fallback": dict,
@@ -118,6 +120,20 @@ def _semantic(config, where, data):
         bad = [k for k, v in data.items() if k != "enabled" and isinstance(v, (int, float)) and v < 0]
         if bad:
             problems.append(("error", f"额度不能为负：{bad}"))
+    if config.name == "aux_config.json":
+        from hakimi.models import aux_config
+        checks = (
+            ("review.mode", (data.get("review") or {}).get("mode"), aux_config.REVIEW_MODES),
+            ("qq_backup.mode", (data.get("qq_backup") or {}).get("mode"), aux_config.QQ_BACKUP_MODES),
+            ("context_judge.mode", (data.get("context_judge") or {}).get("mode"), aux_config.CONTEXT_JUDGE_MODES),
+            ("search_routing.judge_mode", (data.get("search_routing") or {}).get("judge_mode"), aux_config.SEARCH_JUDGE_MODES),
+            ("search_routing.paid_search_mode", (data.get("search_routing") or {}).get("paid_search_mode"), aux_config.PAID_SEARCH_MODES),
+            ("fallback.backend", (data.get("fallback") or {}).get("backend"), aux_config.FALLBACK_BACKENDS),
+            ("ops.backend", (data.get("ops") or {}).get("backend"), aux_config.OPS_BACKENDS),
+        )
+        for label, value, allowed in checks:
+            if value is not None and value not in allowed:
+                problems.append(("error", f"{label}={value!r} 无效"))
     if config.name == "task_routing.json":
         from hakimi.models.task_routing import validate
         try:

@@ -1,6 +1,7 @@
 """Drawing intent and delivery with no live model or QQ calls."""
 
 from concurrent.futures import ThreadPoolExecutor
+import asyncio
 import contextlib
 import io
 import json
@@ -18,13 +19,14 @@ from hakimi.models.provider_health import ProviderHealth
 from hakimi.models.vertex_session import VertexSession, declarations
 from hakimi.prompt.tool_selection import select_names
 from hakimi.tools.drawing_delivery import draw, drawing_in, onebot_image, receipts
-from hakimi.tools.drawing_intent import TOOL, request_id, requested
+from hakimi.tools.drawing_intent import COOLDOWN_NOTE, TOOL, request_id, requested
 from hakimi.transport.file_delivery import from_segment, menu, stage
 
 
 CONFIG = {'enabled': True, 'has_api_key': True}
 BRIEF = {'brief': '水彩画，俯瞰旧校园的蓝色夜景，窗旁一串猫爪形灯饰。'}
-PICTURE = SimpleNamespace(data=b'synthetic generated PNG payload', mime_type='image/png')
+PICTURE = SimpleNamespace(data=b'synthetic generated PNG payload', mime_type='image/png',
+                          models_tried=('fixture-image',))
 
 
 def message(text, ident='11', user='5', session='group:123', at=None, **extra):
@@ -140,6 +142,7 @@ class DrawingDelivery(unittest.TestCase):
             submitted = pending.result(timeout=5)
         self.assertTrue(submitted['ok'])
         self.assertEqual(model.call_args.args, (self.base, BRIEF['brief']))
+        self.assertEqual(model.call_args.kwargs['timeout'], 180)
         model.assert_called_once()
         session, segment = self.guard.next_message()
         ident = drawing_in([segment])
@@ -214,16 +217,92 @@ class DrawingDelivery(unittest.TestCase):
         from hakimi.models.dsh_tools import execute
         from hakimi.models.fallback_prompt import fallback_prompt
 
+        now = [time.time()]
+        self.coordinator.clock = lambda: now[0]
         claim = self.claim(message('帮我画一幅校园夜景'), provider='dsh')
         listing = execute({'tool': 'tools.list', 'input': {}}, claim, self.coordinator, self.base)
         self.assertIn(TOOL, {item['name'] for item in listing['result']['tools']})
         self.assertEqual(fallback_prompt(claim['payload'], self.base).count(TOOL), 1)
         self.assertNotIn(TOOL, fallback_prompt(turn(message('早上好')), self.base))
-        with patch('hakimi.tools.drawing.generate', return_value=PICTURE):
+        def slow_image(base, brief, *, timeout):
+            self.assertEqual(timeout, 180)
+            now[0] += 179
+            self.assertGreater(now[0], claim['deadline'])
+            self.assertTrue(self.coordinator.check_token(claim['token'], 'dsh'))
+            return PICTURE
+
+        with patch('hakimi.tools.drawing.generate', side_effect=slow_image):
             result = execute({'tool': TOOL, 'input': BRIEF}, claim, self.coordinator, self.base)
         self.assertTrue(result['ok'])
         self.assertEqual(result['terminal'], {'action': 'silent', 'text': ''})
         self.assertTrue(claim['_reply_submitted'])
+
+    def test_fallback_drawing_respects_turn_expiry(self):
+        now = time.time()
+        self.coordinator = TurnCoordinator(self.base, clock=lambda: now, ttl_seconds=100)
+        claim = self.claim(message('画张校园夜景'), provider='dsh')
+        with patch('hakimi.tools.drawing.generate', return_value=PICTURE) as model:
+            self.assertTrue(self.send(claim)['ok'])
+        self.assertEqual(model.call_args.kwargs['timeout'], 98)
+
+    def test_known_cooldown_reaches_only_a_drawing_turn(self):
+        from hakimi.models.fallback_prompt import fallback_prompt
+        from hakimi.prompt.prompt_context import render_vertex_prompt
+        from hakimi.tools.drawing_accounting import reserve, quota_status
+
+        payload = turn(message('帮我画张校园夜景'))
+        reserve(self.base, {})
+        reserve(self.base, {})
+        before = quota_status(self.base)
+        self.assertIsNotNone(before['available_at'])
+        self.assertNotIn(TOOL, select_names(payload, {TOOL}, self.base))
+        for render in (fallback_prompt, render_vertex_prompt):
+            self.assertIn(COOLDOWN_NOTE, render(payload, self.base))
+            self.assertNotIn(COOLDOWN_NOTE, render(turn(message('聊聊校园夜景')), self.base))
+        self.assertEqual(before, quota_status(self.base))
+
+    def test_primary_composes_reply_after_simultaneous_quota_hit(self):
+        from hakimi.tools.drawing import DrawingError
+
+        claim = self.claim(message('帮我画张校园夜景'))
+        reply = '画笔正歇着呢，但那排路灯我想画成猫爪。'
+        def answer(part):
+            return {'candidates': [{'finishReason': 'STOP', 'content': {'role': 'model', 'parts': [part]}}]}
+        transport = Mock(side_effect=[
+            answer({'functionCall': {'name': TOOL, 'args': BRIEF}}), answer({'text': reply})])
+        session = VertexSession([], self.base, {}, transport=transport, image_loader=lambda _: [])
+        def tool(name, args, turn_claim, timeout):
+            if name == 'reply.send':
+                return {'ok': self.coordinator.submit_reply(turn_claim['token'], [args['text']], 'gemini')['accepted']}
+            return session._tool(name, args, turn_claim, timeout)
+        session.tool_runner = tool
+        denied = DrawingError('drawing_window_images', '内部时间 13:45:25')
+        with patch('hakimi.tools.drawing.generate', side_effect=denied) as model:
+            session.generate('群友请求画夜景', self.coordinator, claim)
+        model.assert_called_once()
+        wire = transport.call_args.args[0]['contents'][-1]['parts'][0]['functionResponse']['response']
+        self.assertEqual(wire, {'error': 'drawing_cooldown', 'feedback': COOLDOWN_NOTE})
+        self.assertEqual(self.guard.next_message(), ('group:123', reply))
+
+    def test_fallback_composes_reply_after_daily_quota_hit(self):
+        from hakimi.models.dsh_tools import execute, resolve_tools
+        from hakimi.models.fallback_commit import submit_fallback_result
+        from hakimi.tools.drawing import DrawingError
+
+        claim = self.claim(message('帮我画张校园夜景'), provider='dsh')
+        request = {'action': 'tool', 'tool': TOOL, 'input': BRIEF, 'text': ''}
+        reply = '这幅我先欠着，窗边的猫爪灯可别拆。'
+        chat = AsyncMock(return_value={'action': 'reply', 'text': reply})
+        with patch('hakimi.tools.drawing.generate', side_effect=DrawingError('drawing_day_images', '内部时间 00:00:00')) as model:
+            result = asyncio.run(resolve_tools(request, claim, self.coordinator, self.base, chat, {'calls': []}, {}))
+            again = execute(request, claim, self.coordinator, self.base)
+        model.assert_called_once()
+        self.assertEqual(again, {'error': 'drawing_cooldown', 'feedback': COOLDOWN_NOTE})
+        self.assertIn(COOLDOWN_NOTE, chat.await_args.args[0])
+        self.assertNotIn('内部时间', chat.await_args.args[0])
+        self.assertIsNone(self.guard.next_message())
+        self.assertTrue(submit_fallback_result(result, claim, self.coordinator, self.base)['accepted'])
+        self.assertEqual(self.guard.next_message(), ('group:123', reply))
 
     def test_native_tool_list_does_not_reopen_hidden_drawing(self):
         def response(name=None, **args):

@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "max_calls_per_hour": 6,
   "max_calls_per_day": 18,
   "max_session_calls_per_hour": 2,

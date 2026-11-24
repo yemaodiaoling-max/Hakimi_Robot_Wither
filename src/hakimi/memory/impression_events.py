@@ -365,7 +365,9 @@ def _current_choice(value,choices,packets=()):
 def tick(base,now=None,*,runner=None):
     """Invoked by the existing five-minute maintenance tick; no extra daemon."""
     from hakimi.memory.memory_store import store
-    from hakimi.memory import daily_events, relationship_events
+    from hakimi.memory import daily_events, relationship_events, review_runtime
+    if runner is None and not review_runtime.is_enabled(base):
+        return {'status':'idle','classified':0,'reason':'review_disabled'}
     real_time=now is None
     now=time.time() if real_time else now;index=store(str(Path(base).resolve()))
     initialize(base)

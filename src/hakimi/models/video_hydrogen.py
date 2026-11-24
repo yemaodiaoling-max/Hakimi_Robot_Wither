@@ -1,51 +1,77 @@
-"""Serve QQ’s native tool loop through the video companion."""
+"""Serve QQ's native tool loop through an independent backup API or companion duty."""
 import json
 import sqlite3
+import ssl
 import sys
 import time
+import uuid
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
 
-from hakimi.models.argon_session import chat_tools, messages
+from hakimi.models import aux_config
+from hakimi.models.argon_session import NoAvailableAccounts, chat_request, chat_tools, messages
 from hakimi.models.vertex_route import root_for
 
 
 PROVIDER = 'video_claude'
 FLASH_PROVIDER = 'video_flash'
 HYDROGEN_PROVIDER = 'video_hydrogen'
-DUTY_PROVIDERS = frozenset({PROVIDER, FLASH_PROVIDER, HYDROGEN_PROVIDER})
+CUSTOM_BACKUP_PROVIDER = 'qq_backup_api'
+DUTY_PROVIDERS = frozenset({PROVIDER, FLASH_PROVIDER, HYDROGEN_PROVIDER, CUSTOM_BACKUP_PROVIDER})
 
 
-def _companion(root):
+def _companion(root, config_path=None):
     companion = root_for(root).parent / 'bili_companion'
     source = str(companion / 'src')
     if source not in sys.path:
         sys.path.insert(0, source)
     from bili_companion.cognition import companion_text
-    return companion_text, companion / 'deploy' / 'watcher.json'
+    cfg_file = Path(config_path) if config_path else (companion / 'deploy' / 'watcher.json')
+    return companion_text, cfg_file
 
 
-def backend(root, role):
-    client, watcher = _companion(root)
+def backend(root, role, config_path=None):
+    client, watcher = _companion(root, config_path=config_path)
     return client, client.load_settings(watcher, role)
 
 
-def review_backend(root):
-    client, watcher = _companion(root)
+def review_backend(root, config_path=None):
+    client, watcher = _companion(root, config_path=config_path)
     return client, client.load_config(watcher)
 
 
 def config(root):
+    if aux_config.has_config(root):
+        cfg = aux_config.qq_backup_config(root)
+        if not cfg.get('enabled') or cfg.get('mode') == 'disabled':
+            return None
+        if cfg['mode'] == 'custom_api':
+            if (not str(cfg.get('base_url') or '').strip()
+                    or not str(cfg.get('model') or '').strip()
+                    or not aux_config.resolve_api_key(cfg)):
+                return None
+            return {'mode': 'custom_api', 'model': str(cfg['model']).strip(), 'config': cfg, 'budget': {}}
+        config_path = cfg.get('config_path') or None
+    else:
+        config_path = None
     try:
-        client, budget = review_backend(root)
+        client, budget = review_backend(root, config_path=config_path)
         if budget.get('qq_flash_low_profile'):
             from bili_companion.cognition.flash_duty import active_text_models
-            return {'model': active_text_models(budget)['qq'], 'budget': budget}
-        return client.text_settings(budget, 'reasoning')
+            return {'model': active_text_models(budget)['qq'], 'budget': budget, '_config_path': config_path}
+        result = client.text_settings(budget, 'reasoning')
+        if config_path and isinstance(result, dict):
+            result['_config_path'] = config_path
+        return result
     except Exception:
         return None
 
 
 def duty_identity(settings):
     """Read the default QQ responder for status displays."""
+    if settings.get('mode') == 'custom_api':
+        return CUSTOM_BACKUP_PROVIDER, settings['model']
     config = settings['budget']
     if config.get('qq_flash_low_profile') or config.get('flash_duty_profile') or config.get('qq_hydrogen_profile'):
         from bili_companion.cognition.flash_duty import HYDROGEN_MODELS, active_text_models
@@ -125,7 +151,116 @@ def _result(value, name_map, provider, prior_ids, *, anthropic_route=None):
             'usageMetadata': counts}
 
 
+def _gemini_custom_stream(session, payload, timeout, cfg, api_key, model):
+    import copy
+    from hakimi.models.vertex_session import _NoRedirect
+    base_url = str(cfg.get('base_url') or '').strip().rstrip('/')
+    if not base_url.startswith('https://') and not base_url.startswith(('http://127.0.0.1', 'http://localhost')):
+        raise RuntimeError('qq_backup_endpoint_invalid')
+    url = f"{base_url}/v1beta/models/{model}:streamGenerateContent?alt=sse"
+    headers = {'Content-Type': 'application/json'}
+    if cfg.get('auth') == 'bearer':
+        headers['Authorization'] = 'Bearer ' + api_key
+    else:
+        headers['x-goog-api-key'] = api_key
+    req = Request(url, data=json.dumps(payload, ensure_ascii=False).encode('utf-8'), headers=headers, method='POST')
+    opener = build_opener(ProxyHandler({}), HTTPSHandler(context=ssl.create_default_context()), _NoRedirect())
+    request_id = uuid.uuid4().hex
+    started = time.monotonic()
+    with opener.open(req, timeout=max(1.0, float(timeout))) as response:
+        result = {'candidates': [{'content': {'role': 'model', 'parts': []}}],
+                  '_provider': CUSTOM_BACKUP_PROVIDER, '_provider_request_id': request_id}
+        candidate = result['candidates'][0]
+        data = []
+        def flush_event():
+            if not data:
+                return
+            event = json.loads('\n'.join(data))
+            data.clear()
+            if event.get('modelVersion'):
+                result['modelVersion'] = event['modelVersion']
+            for item in (event.get('candidates') or [])[:1]:
+                parts = (item.get('content') or {}).get('parts') or []
+                candidate['content']['parts'].extend(copy.deepcopy(parts))
+                if 'finishReason' in item:
+                    candidate['finishReason'] = item['finishReason']
+                if any(p.get('text') or p.get('functionCall') for p in parts):
+                    if session._progress:
+                        session._progress()
+            for key, count in (event.get('usageMetadata') or {}).items():
+                if type(count) is int:
+                    usage = result.setdefault('usageMetadata', {})
+                    usage[key] = max(usage.get(key, 0), count)
+        for raw in response:
+            if time.monotonic() - started >= timeout:
+                raise TimeoutError('model_response_timeout')
+            line = raw.decode('utf-8', errors='replace').rstrip('\r\n')
+            if not line:
+                flush_event()
+            elif line.startswith('data:'):
+                val = line[5:].lstrip()
+                if val != '[DONE]':
+                    data.append(val)
+        flush_event()
+        if candidate.get('finishReason') != 'STOP':
+            raise RuntimeError('qq_backup_incomplete_stream')
+        result.setdefault('modelVersion', model)
+        return result
+
+
+def _custom_api_request(session, payload, timeout, cfg, root):
+    owner = getattr(session, '_owns_turn', None)
+    if owner is not None and not owner():
+        raise RuntimeError('vertex_turn_ownership_lost')
+    if timeout <= 0:
+        raise TimeoutError('model_response_timeout')
+    api_key = aux_config.resolve_api_key(cfg)
+    if not api_key:
+        raise OSError('qq_backup_auth_missing')
+    model = str(cfg.get('model') or '').strip()
+    protocol = str(cfg.get('protocol') or 'openai_compatible')
+    session.last_error = {'provider': CUSTOM_BACKUP_PROVIDER, 'model': model, 'message': 'qq_backup_failed'}
+    started = time.monotonic()
+    try:
+        if protocol == 'gemini':
+            try:
+                res = _gemini_custom_stream(session, payload, timeout, cfg, api_key, model)
+            except (HTTPError, URLError, RuntimeError):
+                fb = str(cfg.get('fallback_model') or '').strip()
+                rem = timeout - (time.monotonic() - started)
+                if not fb or rem <= 1:
+                    raise
+                res = _gemini_custom_stream(session, payload, rem, cfg, api_key, fb)
+        else:
+            profile = {
+                'activated': True,
+                'provider': 'openai_compatible',
+                'base_url': str(cfg.get('base_url') or '').strip(),
+                'api_key': api_key,
+                'output_limit_parameter': cfg.get('output_limit_parameter', 'max_tokens'),
+                'reasoning_effort': cfg.get('reasoning_effort', 'low'),
+            }
+            inline_cfg = {'settings': profile, 'provider_name': CUSTOM_BACKUP_PROVIDER}
+            try:
+                res = chat_request(session, payload, timeout, inline_cfg, root, model)
+            except NoAvailableAccounts:
+                fb = str(cfg.get('fallback_model') or '').strip()
+                rem = timeout - (time.monotonic() - started)
+                if not fb or rem <= 1:
+                    raise
+                res = chat_request(session, payload, rem, inline_cfg, root, fb)
+            res['_provider'] = CUSTOM_BACKUP_PROVIDER
+        session.last_error = None
+        return res
+    except Exception as exc:
+        if owner is not None and not owner():
+            raise RuntimeError('vertex_turn_ownership_lost') from None
+        raise OSError(session.last_error['message']) from exc
+
+
 def request(session, payload, timeout, settings, root):
+    if settings.get('mode') == 'custom_api':
+        return _custom_api_request(session, payload, timeout, settings['config'], root)
     ownership_lost = False
     owner = session._owns_turn
 
@@ -144,7 +279,7 @@ def request(session, payload, timeout, settings, root):
     companion_text = None
     session.last_error = {'provider': PROVIDER, 'model': model, 'message': 'video_claude_failed'}
     try:
-        companion_text, _ = _companion(root)
+        companion_text, _ = _companion(root, config_path=settings.get('_config_path'))
         declarations, name_map = chat_tools(payload)
         rows = messages(payload)
         turn_timeout = session.timeout if timeout == float('inf') else timeout
@@ -158,7 +293,6 @@ def request(session, payload, timeout, settings, root):
             if remaining <= 0:
                 raise TimeoutError('model_response_timeout')
             if not recover:
-                # Leave time in the same QQ turn for the next provider.
                 if provider == HYDROGEN_PROVIDER or not flash_low_standby:
                     remaining -= min(45 if provider == HYDROGEN_PROVIDER else 30, remaining / 2)
                 session.last_error = {'provider': provider, 'model': primary_model,
@@ -187,8 +321,6 @@ def request(session, payload, timeout, settings, root):
         if duty_enabled:
             from bili_companion.cognition.flash_duty import HYDROGEN_MODELS, run_text_duty
 
-            # Once a round uses Claude, a recovery affects the next QQ turn.
-            # The portable transcript gives Claude the previous tool results.
             if not flash_low_standby and getattr(session, '_video_hybrid_owner', None) is owner:
                 result = hybrid(None)
             else:
@@ -205,7 +337,6 @@ def request(session, payload, timeout, settings, root):
     except Exception as exc:
         if ownership_lost or not owner() or getattr(exc, 'code', None) == 'turn_ownership_lost':
             raise RuntimeError('vertex_turn_ownership_lost') from None
-        # The provider request cannot enter the Vertex retry path.
         failure = session.last_error['message']
         if companion_text is not None and isinstance(exc, companion_text.BudgetPaused):
             failure = 'model_budget_exhausted'

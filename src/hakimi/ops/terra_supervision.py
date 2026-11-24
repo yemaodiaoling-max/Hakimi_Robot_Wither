@@ -696,6 +696,10 @@ def run_cycle(base, now=None, *, runner=None, budget=None, force=False):
                 "budget_model": False}
     if runner is None:
         def runner(prompt, schema):
+            from hakimi.models import aux_config
+            if aux_config.has_config(base) and aux_config.ops_config(base).get("backend") in ("main_gateway", "custom_api"):
+                from hakimi.models import gateway_text
+                return gateway_text.complete_structured_ops(base, prompt, schema, model=TERRA_MODEL, timeout=90)
             return run_codex_structured(prompt, base, schema, model=TERRA_MODEL,
                                         timeout=90, max_prompt_chars=MAX_PROMPT)
     if budget is None:

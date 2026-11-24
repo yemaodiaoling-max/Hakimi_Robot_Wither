@@ -13,6 +13,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from hakimi.tools import drawing
+from hakimi.tools.drawing_accounting import quota_status
 from hakimi.tools.drawing_settings import DEFAULT_ENDPOINT, DEFAULT_MODEL
 
 
@@ -51,7 +52,7 @@ class DrawingProviderTests(unittest.TestCase):
     def enable(self, **extra):
         return drawing.save_settings(self.base, {"enabled": True, "api_key": KEY, **extra})
 
-    def mock_connection(self, document, *, status=200, error=None):
+    def mock_connection(self, document, *, status=200, error=None, responses=None):
         requests = []
         connections = []
         body = document if isinstance(document, bytes) else json.dumps(document).encode()
@@ -63,6 +64,9 @@ class DrawingProviderTests(unittest.TestCase):
                     raise error
 
             def getresponse(self):
+                if responses is not None:
+                    next_status, doc = next(responses)
+                    return FakeResponse(json.dumps(doc).encode(), status=next_status)
                 return FakeResponse(body, status=status)
 
         @contextmanager
@@ -99,6 +103,77 @@ class DrawingProviderTests(unittest.TestCase):
         self.assertEqual(drawing.public_settings(self.base)["endpoint"], DEFAULT_ENDPOINT)
         updated = drawing.save_settings(self.base, {"endpoint": "https://images.example.com:1443/gemini", "api_key": KEY})
         self.assertEqual(updated["endpoint"], "https://images.example.com:1443/gemini")
+
+    def test_backup_list_validation_and_removal(self):
+        self.enable(model="a", fallback_models=["models/b", "a", " b ", "c"])
+        self.assertEqual(drawing.public_settings(self.base)["fallback_models"], ["b", "c"])
+        for bad in ("unparsed", ["../leak"], [KEY], ["x"] * 9):
+            with self.subTest(bad=bad), self.assertRaises(drawing.DrawingError):
+                drawing.save_settings(self.base, {"fallback_models": bad})
+        drawing.save_settings(self.base, {"fallback_models": []})
+        self.assertEqual(drawing.public_settings(self.base)["fallback_models"], [])
+
+    def test_ordered_model_failover_keeps_native_path_prompt_and_one_quota(self):
+        self.enable(model="a", fallback_models=["b", "c"],
+                    endpoint="https://images.example.org/custom/v1beta/models/a:generateContent",
+                    daily_usd_limit=".05", reserve_usd=".05")
+        unavailable = {"error": {"code": "no_available_channel"}}
+        missing = {"error": {"status": "NOT_FOUND", "message": "models/b is not found for API version v1beta"}}
+        image = image_bytes("PNG")
+        success = {"candidates": [{"content": {"parts": [inline(image)]}}], "usageMetadata": {"costUsd": ".04"}}
+        network, requests, _ = self.mock_connection({}, responses=iter([(503, unavailable), (404, missing), (200, success)]))
+        with network:
+            result = drawing.generate(self.base, BRIEF)
+        self.assertEqual(result.data, image)
+        self.assertEqual(result.models_tried, ("a", "b", "c"))
+        self.assertEqual([req[1] for req in requests], [f"/custom/v1beta/models/{m}:generateContent" for m in "abc"])
+        self.assertTrue(all(req[2:] == requests[0][2:] for req in requests))
+        quota = quota_status(self.base)
+        self.assertEqual((quota["window_remaining"], quota["daily_remaining"]), (1, 19))
+
+    def test_exhausted_or_ambiguous_attempts_stop(self):
+        unavailable = {"error": {"code": "model_not_found"}}
+        billed = dict(unavailable, usageMetadata={"costUsd": ".02"})
+        self.enable(model="a", fallback_models=["b"])
+        for results, code, receipt, rejected in [
+            ([(404, unavailable), (503, unavailable)], "drawing_model_unavailable", None, True),
+            ([(404, unavailable), (503, {})], "drawing_provider", None, False),
+            ([(404, billed)], "drawing_provider_request", billed, False),
+            ([(200, {"promptFeedback": {"blockReason": "SAFETY"}})], "drawing_blocked",
+             {"promptFeedback": {"blockReason": "SAFETY"}}, False),
+        ]:
+            with self.subTest(code=code):
+                network, requests, _ = self.mock_connection({}, responses=iter(results))
+                with network, patch.object(drawing, "reserve", return_value="id"), \
+                        patch.object(drawing, "finish") as finish, self.assertRaises(drawing.DrawingError) as raised:
+                    drawing.generate(self.base, BRIEF)
+                self.assertEqual((raised.exception.code, len(requests)), (code, len(results)))
+                finish.assert_called_once_with(self.base, "id", receipt, rejected=rejected)
+
+    def test_switching_models_uses_one_bounded_deadline(self):
+        self.enable(model="a", fallback_models=["b"])
+        for options, limit in (({}, 180), ({"timeout": 500}, 180), ({"timeout": 32}, 32)):
+            now = [1000.]
+            deadlines = []
+
+            @contextmanager
+            def connection(endpoint, deadline):
+                deadlines.append(deadline)
+                yield None
+
+            def refused(*args):
+                now[0] += limit - 1 if len(deadlines) == 1 else 1
+                if len(deadlines) == 1:
+                    raise drawing.DrawingError("drawing_model_unavailable", "fixture", http_status=404)
+                raise TimeoutError()
+
+            with self.subTest(options=options), patch.object(drawing.time, "monotonic", lambda: now[0]), \
+                    patch.object(drawing, "_https_connection", connection), patch.object(drawing, "_response_json", refused), \
+                    patch.object(drawing, "reserve", return_value="id"), patch.object(drawing, "finish"), \
+                    self.assertRaises(drawing.DrawingError) as raised:
+                drawing.generate(self.base, BRIEF, **options)
+            self.assertEqual(raised.exception.code, "drawing_timeout")
+            self.assertEqual(deadlines, [1000 + limit, 1000 + limit])
 
     def test_bad_endpoints_are_ignored_without_echoing_secrets(self):
         for url in (f"https://api.example.org/?key={KEY}", f"https://{KEY}@api.example.org/",

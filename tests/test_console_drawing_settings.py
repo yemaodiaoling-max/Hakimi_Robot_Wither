@@ -70,6 +70,7 @@ class DrawingSettingsConsoleTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("form-action 'none'", headers["Content-Security-Policy"])
         self.assertIn(b'type="password"', page)
+        self.assertIn(b'id="drawing-fallbacks"', page)
         self.assertIn("所有 QQ 群聊与私聊共用额度".encode(), page)
         self.assertNotIn(self.api_key.encode(), page)
 
@@ -87,10 +88,13 @@ class DrawingSettingsConsoleTests(unittest.TestCase):
         self.assertFalse(initial["data"]["has_api_key"])
         self.assertEqual(initial["data"]["quota"]["window_remaining"], 2)
         self.assertEqual(initial["data"]["quota"]["daily_remaining"], 20)
+        self.assertEqual(initial["data"]["model"], "gemini-3.1-flash-image")
+        self.assertEqual(len(initial["data"]["fallback_models"]), 4)
 
         status, saved = self.settings("POST", {
             "endpoint": "https://example.invalid/v1beta",
             "model": "gemini-2.5-flash-image",
+            "fallback_models": ["test-backup", "test-backup-2"],
             "api_key": self.api_key,
             "enabled": True,
             "reserve_usd": "0.05",
@@ -110,6 +114,7 @@ class DrawingSettingsConsoleTests(unittest.TestCase):
         self.assertEqual(status, 200, updated)
         self.assertFalse(updated["data"]["enabled"])
         self.assertTrue(updated["data"]["has_api_key"])
+        self.assertEqual(updated["data"]["fallback_models"], ["test-backup", "test-backup-2"])
         self.assertIsNone(updated["data"]["daily_usd_limit"])
 
         status, rejected = self.settings("POST", {

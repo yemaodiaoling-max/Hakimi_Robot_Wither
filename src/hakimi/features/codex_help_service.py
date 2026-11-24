@@ -46,12 +46,35 @@ def monitor_health(base, now, started_at):
             report_fault(base, component, code="heartbeat_invalid")
 
 
-def process_one(queue, runner=run_codex):
+def run_help_request(brief, base, timeout=70):
+    from hakimi.models import aux_config
+    if aux_config.has_config(base) and aux_config.ops_config(base).get("backend") in ("main_gateway", "custom_api"):
+        from hakimi import persona
+        from hakimi.features.codex_help import project_root, scrub
+        from hakimi.features.codex_help_runner import SCHEMA, fault_sources
+        from hakimi.models import gateway_text
+        data = dict(brief)
+        if data.get("kind") == "fault":
+            data["trusted_source_excerpts"] = fault_sources(brief, base)
+        prompt = persona.text("ops/codex_analyst.txt") + json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        if len(prompt.encode("utf-8")) > 28000:
+            raise CodexHelpError("codex_prompt_limit")
+        result, usage = gateway_text.complete_structured_ops(project_root(base), prompt, SCHEMA, timeout=timeout)
+        if (not isinstance(result, dict) or set(result) != {"answer", "uncertainty"}
+                or not isinstance(result.get("answer"), str) or not 1 <= len(result["answer"].strip()) <= 2600
+                or not isinstance(result.get("uncertainty"), str) or len(result["uncertainty"]) > 600):
+            raise CodexHelpError("codex_result_invalid")
+        return {k: scrub(v, 2600 if k == "answer" else 600) for k, v in result.items()}, usage
+    return run_codex(brief, base, timeout)
+
+
+def process_one(queue, runner=None):
     job = queue.claim()
     if not job:
         return False
     try:
-        result, usage = runner(job["brief"], queue.root, queue.cfg["timeout_seconds"])
+        fn = runner or run_help_request
+        result, usage = fn(job["brief"], queue.root, queue.cfg["timeout_seconds"])
         queue.finish(job["id"], result=result, usage=usage)
         diagnostic_path = queue.root/"state/codex_help_startup_diagnostic.json"
         if diagnostic_path.exists():

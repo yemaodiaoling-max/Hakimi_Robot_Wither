@@ -221,7 +221,9 @@ INSTRUCTION = (
 
 def tick(base, now=None, *, runner=None):
     from hakimi.memory.memory_store import store
-    from hakimi.memory.review_runtime import classify, error_code
+    from hakimi.memory.review_runtime import classify, error_code, is_enabled
+    if runner is None and not is_enabled(base):
+        return {'status': 'idle', 'reason': 'review_disabled'}
     real_time = now is None
     now = time.time() if real_time else now
     index = store(str(Path(base).resolve()))

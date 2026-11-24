@@ -153,7 +153,13 @@ def run_cycle(root,faults,evidence,now,*,budget,check,runner=None):
     job=root/'state/sol_repair_jobs'/(str(int(now))+'-'+sig);job.mkdir(parents=True,exist_ok=True)
     called=True
     try:
-        result,usage=(runner or run_codex_structured)(prompt,root,SCHEMA,model=MODEL,timeout=90,max_prompt_chars=80000)
+        def _default_runner(p, r, schema, *, model=MODEL, timeout=90, max_prompt_chars=80000):
+            from hakimi.models import aux_config
+            if aux_config.has_config(r) and aux_config.ops_config(r).get('backend') in ('main_gateway', 'custom_api'):
+                from hakimi.models import gateway_text
+                return gateway_text.complete_structured_ops(r, p[:max_prompt_chars], schema, model=model, timeout=timeout)
+            return run_codex_structured(p, r, schema, model=model, timeout=timeout, max_prompt_chars=max_prompt_chars)
+        result,usage=(runner or _default_runner)(prompt,root,SCHEMA,model=MODEL,timeout=90,max_prompt_chars=80000)
         budget.settle(receipt,usage,success=True,now=now)
     except Exception as exc:
         budget.settle(receipt,None,success=False,now=now)

@@ -66,6 +66,7 @@ TIER_LABELS = {
 DEFAULT_CONFIG = {
     "version": 1,
     "upstream": {
+        "protocol": "gemini",       # "gemini" | "openai_compatible"
         "base_url": "https://generativelanguage.googleapis.com",
         "api_version": "v1beta",
         "auth": "x-goog-api-key",   # or "bearer" for Gemini-compatible proxies
@@ -332,6 +333,9 @@ def list_models(config=None, key=None, timeout=15):
     key = key or upstream_key()
     upstream = config["upstream"]
     base_url = str(upstream.get("base_url")).rstrip("/")
+    if upstream.get("protocol") == "openai_compatible":
+        from hakimi.gateway import openai_compat
+        return openai_compat.list_openai_models(base_url, key, _opener(config), timeout=timeout)
     request = Request(f"{base_url}/{upstream.get('api_version', 'v1beta')}/models?pageSize=200", method="GET",
                       headers={"Authorization": "Bearer " + key} if upstream.get("auth") == "bearer" else {"x-goog-api-key": key})
     with _opener(config).open(request, timeout=timeout) as response:
@@ -429,14 +433,39 @@ class GatewayHandler(BaseHTTPRequestHandler):
         if not key:
             return self._error(503, "upstream_key_missing", headers)
         stream = method == "streamGenerateContent"
-        try:
-            request = _upstream_request(config, key, upstream_model, method, body, "?alt=sse" if stream else "")
-        except ValueError as exc:
-            return self._error(400, str(exc), headers)
+        upstream_cfg = config.get("upstream") or {}
+        is_openai = upstream_cfg.get("protocol") == "openai_compatible"
+        name_map = {}
+        if is_openai:
+            if method == "countTokens":
+                return self._send(200, {"totalTokens": max(1, len(body) // 4)}, headers)
+            base_url = str(upstream_cfg.get("base_url") or "").strip().rstrip("/")
+            if not base_url.startswith("https://") and not re.match(r"^http://(127\.0\.0\.1|localhost)(:\d+)?(/|$)", base_url):
+                return self._error(400, "upstream_must_be_https", headers)
+            try:
+                gemini_payload = json.loads(body or b"{}")
+            except ValueError:
+                return self._error(400, "invalid_json", headers)
+            from hakimi.gateway import openai_compat
+            openai_body, name_map = openai_compat.gemini_to_openai_request(gemini_payload, upstream_model, stream=stream)
+            req_headers = {"Content-Type": "application/json", "Authorization": "Bearer " + key}
+            if stream:
+                req_headers["Accept"] = "text/event-stream"
+            request = Request(
+                openai_compat.openai_chat_url(base_url),
+                data=json.dumps(openai_body, ensure_ascii=False).encode("utf-8"),
+                headers=req_headers,
+                method="POST",
+            )
+        else:
+            try:
+                request = _upstream_request(config, key, upstream_model, method, body, "?alt=sse" if stream else "")
+            except ValueError as exc:
+                return self._error(400, str(exc), headers)
         if not self.server.slots.acquire(timeout=30):
             return self._error(429, "gateway_busy", headers)
         try:
-            timeout = float((config.get("upstream") or {}).get("timeout_seconds") or 240)
+            timeout = float(upstream_cfg.get("timeout_seconds") or 240)
             try:
                 upstream = _opener(config).open(request, timeout=timeout)
             except HTTPError as exc:
@@ -451,38 +480,89 @@ class GatewayHandler(BaseHTTPRequestHandler):
             except (URLError, TimeoutError, OSError):
                 return self._error(502, "upstream_unavailable", headers)
             with upstream:
-                self.send_response(200)
-                self.send_header("Content-Type", upstream.headers.get("Content-Type", "application/json"))
-                self.send_header("Connection", "close")
-                for k, v in headers.items():
-                    self.send_header(k, v)
-                self.end_headers()
                 usage = None
-                if stream:
-                    while True:
-                        line = upstream.readline()
-                        if not line:
-                            break
-                        if line.startswith(b"data:"):
+                if is_openai:
+                    from hakimi.gateway import openai_compat
+                    if stream:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                        self.send_header("Connection", "close")
+                        for k, v in headers.items():
+                            self.send_header(k, v)
+                        self.end_headers()
+                        if upstream.headers.get_content_type() == "text/event-stream":
+                            usage_holder = {}
+                            for chunk in openai_compat.iter_openai_sse_as_gemini_sse(
+                                upstream, upstream_model, name_map=name_map, usage_out=usage_holder
+                            ):
+                                try:
+                                    self.wfile.write(chunk)
+                                    self.wfile.flush()
+                                except (BrokenPipeError, ConnectionResetError):
+                                    break
+                            usage = usage_holder.get("usageMetadata")
+                        else:
+                            raw_data = upstream.read(MAX_BODY)
                             try:
-                                usage = json.loads(line[5:]).get("usageMetadata") or usage
-                            except ValueError:
+                                gemini_resp = openai_compat.openai_response_to_gemini(
+                                    json.loads(raw_data), upstream_model, name_map=name_map
+                                )
+                                usage = gemini_resp.get("usageMetadata")
+                                self.wfile.write(("data: " + json.dumps(gemini_resp, ensure_ascii=False) + "\n\n").encode("utf-8"))
+                                self.wfile.flush()
+                            except (ValueError, BrokenPipeError, ConnectionResetError):
                                 pass
+                    else:
+                        raw_data = upstream.read(MAX_BODY)
                         try:
-                            self.wfile.write(line)
-                            self.wfile.flush()
+                            gemini_resp = openai_compat.openai_response_to_gemini(
+                                json.loads(raw_data), upstream_model, name_map=name_map
+                            )
+                        except ValueError:
+                            return self._error(502, "upstream_invalid_response", headers)
+                        usage = gemini_resp.get("usageMetadata")
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.send_header("Connection", "close")
+                        for k, v in headers.items():
+                            self.send_header(k, v)
+                        self.end_headers()
+                        try:
+                            self.wfile.write(json.dumps(gemini_resp, ensure_ascii=False).encode("utf-8"))
                         except (BrokenPipeError, ConnectionResetError):
-                            break
+                            pass
                 else:
-                    data = upstream.read(MAX_BODY)
-                    try:
-                        usage = json.loads(data).get("usageMetadata")
-                    except ValueError:
-                        pass
-                    try:
-                        self.wfile.write(data)
-                    except (BrokenPipeError, ConnectionResetError):
-                        pass
+                    self.send_response(200)
+                    self.send_header("Content-Type", upstream.headers.get("Content-Type", "application/json"))
+                    self.send_header("Connection", "close")
+                    for k, v in headers.items():
+                        self.send_header(k, v)
+                    self.end_headers()
+                    if stream:
+                        while True:
+                            line = upstream.readline()
+                            if not line:
+                                break
+                            if line.startswith(b"data:"):
+                                try:
+                                    usage = json.loads(line[5:]).get("usageMetadata") or usage
+                                except ValueError:
+                                    pass
+                            try:
+                                self.wfile.write(line)
+                                self.wfile.flush()
+                            except (BrokenPipeError, ConnectionResetError):
+                                break
+                    else:
+                        data = upstream.read(MAX_BODY)
+                        try:
+                            usage = json.loads(data).get("usageMetadata")
+                        except ValueError:
+                            pass
+                        try:
+                            self.wfile.write(data)
+                        except (BrokenPipeError, ConnectionResetError):
+                            pass
                 if method != "countTokens":
                     record(self.server.base, config, request_id=request_id, model=model,
                            upstream_model=upstream_model, usage=usage, status=200)

@@ -30,7 +30,8 @@
 
 ## 兼容地址与代理
 
-- 任何实现了 Gemini REST 协议（`/v1beta/models/<模型>:streamGenerateContent`）的中转服务都可以用：接口类型选“Gemini 兼容地址”，鉴权方式按服务商要求选 `x-goog-api-key` 或 `Bearer`。
+- **Gemini / Gemini 兼容**：接口类型选“Google Gemini API”或“Gemini 兼容地址”，鉴权按服务商选 `x-goog-api-key` 或 `Bearer`。
+- **OpenAI 兼容（单 API 开箱即可用）**：接口类型选“OpenAI 兼容地址”（如 DeepSeek、OpenRouter、自建 vLLM 等），网关会自动把内部 Gemini `generateContent` 请求与工具调用流式互转为 `/chat/completions` 并照常记账。
 - 服务器无法直连 Google 时，在「代理」里填 `http://127.0.0.1:7890` 这类地址。
 
 ## 月度上限

@@ -60,6 +60,7 @@ def generate(day):
     health=availability(ROOT);dsh=health.get('mode')=='dsh' or health.get('fast') and health.get('mode')!='gemini'
     provider='gemini';raw=None
     if not dsh:
+        folder(ROOT).mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='diary_write_',dir=folder(ROOT)) as work:
             args=[str(Path.home()/'.local/bin/agy'),'--input-format','stream-json','--output-format','stream-json',
                 '--model',os.environ.get('HAKIMI_GEMINI_MODEL','gemini-3.8-flash-low'),'--disable-slash-commands','--print-timeout','90s']
@@ -81,9 +82,19 @@ def generate(day):
             except (OSError,RuntimeError,TimeoutError,ValueError):raw=None
             finally:session.close()
     if raw is None:
-        from hakimi.models.fallback_runner import run_fallback
-        provider='dsh'
-        result=run_fallback('本轮写日记，把所需JSON序列化放入标准reply的text字符串。\n'+prompt,ROOT/'official_test_runtime',timeout_seconds=90)
+        from hakimi.models import aux_config
+        if not aux_config.diary_fallback_enabled(ROOT):
+            raise RuntimeError('diary_primary_unavailable')
+        fb_cfg=aux_config.fallback_config(ROOT)
+        diary_prompt='本轮写日记，把所需JSON序列化放入标准reply的text字符串。\n'+prompt
+        if fb_cfg.get('backend')=='http_api':
+            from hakimi.models.fallback_http import run_http_fallback
+            provider=fb_cfg.get('model') or 'http_fallback'
+            result=run_http_fallback(diary_prompt,ROOT/'official_test_runtime',timeout_seconds=90,cfg=fb_cfg)
+        else:
+            from hakimi.models.fallback_runner import run_fallback
+            provider='dsh'
+            result=run_fallback(diary_prompt,ROOT/'official_test_runtime',timeout_seconds=90)
         raw=result['text']
     data=parse(raw)
     row=save(ROOT,day,data['title'],data['text'],data['image_prompt'],provider)

@@ -89,17 +89,21 @@ async def resolve_consultation(result, claim, coordinator, base, generate, statu
 
 
 async def fallback_loop(load_config, base=BASE_DIR, runner=None):
-    async def invoke(prompt, claim, ceiling):
+    async def invoke(prompt, claim, ceiling, fb_cfg=None):
         if runner is not None:
             return await asyncio.to_thread(runner, prompt, base)
-        from hakimi.models.fallback_runner import run_fallback
         limit = max(1, min(ceiling, claim["deadline"]-time.time()-2))
+        if fb_cfg and fb_cfg.get("backend") == "http_api":
+            from hakimi.models.fallback_http import run_http_fallback
+            return await asyncio.to_thread(run_http_fallback, prompt, base, timeout_seconds=limit,
+                                           images=claim.get("_images", ()), cfg=fb_cfg)
+        from hakimi.models.fallback_runner import run_fallback
         return await asyncio.to_thread(run_fallback, prompt, base, timeout_seconds=limit,
                                        images=claim.get("_images", ()))
 
-    async def generate(prompt, claim, ceiling=90):
+    async def generate(prompt, claim, ceiling=90, fb_cfg=None):
         try:
-            return await invoke(prompt, claim, ceiling)
+            return await invoke(prompt, claim, ceiling, fb_cfg=fb_cfg)
         except FallbackError as exc:
             hint = getattr(exc, 'protocol_hint', None)
             if (not hint or claim.get('_protocol_repaired') or
@@ -119,7 +123,7 @@ async def fallback_loop(load_config, base=BASE_DIR, runner=None):
             suffix=('\n上次输出未通过格式校验。具体问题：'+hint+
                 '\n请根据原问题重新生成一个完整 JSON 对象。普通回复示例：{"action":"reply","text":"回复正文"}。'
                 '仅在确实需要调用工具时使用 action=tool、tool、input、text。')
-            return await invoke(append_fallback_context(prompt,suffix), claim, ceiling)
+            return await invoke(append_fallback_context(prompt,suffix), claim, ceiling, fb_cfg=fb_cfg)
     state_path = base / "state" / "fallback_status.json"
     try:
         status = json.loads(state_path.read_text(encoding="utf-8"))
@@ -138,7 +142,9 @@ async def fallback_loop(load_config, base=BASE_DIR, runner=None):
             settings = cfg.get("fallback", {})
             now = time.time()
             status["calls"] = [at for at in status.get("calls", []) if isinstance(at, (int, float)) and now - at < 3600]
-            enabled = settings.get("enabled", False)
+            from hakimi.models import aux_config
+            fb_cfg = aux_config.fallback_config(base, settings)
+            enabled = fb_cfg.get("enabled", False)
             limited = [at for at in _limited_calls(status) if isinstance(at, (int, float)) and now - at < 3600]
             status['limited_calls'] = limited
             budget = len(limited) < settings.get("max_calls_per_hour", 20)
@@ -175,7 +181,7 @@ async def fallback_loop(load_config, base=BASE_DIR, runner=None):
                             can_consult = (help_settings(base)["enabled"] and worker_healthy(base)
                                            and can_call(status, settings, claim))
                             result = await generate(fallback_prompt(claim["payload"], base, allow_consult=can_consult,
-                                                                   images=claim["_images"]), claim)
+                                                                   images=claim["_images"]), claim, fb_cfg=fb_cfg)
                             if result["action"] == "consult":
                                 result = await resolve_consultation(result, claim, coordinator, base, generate, status, settings)
                             if result['action']=='tool':
