@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <script defer src="/panel-shell.js"></script><title>哈基米 · 复盘变化</title>
+  <link rel="stylesheet" href="/styles.css?v=8.3">
+  <link rel="stylesheet" href="/review-history.css"><link rel="stylesheet" href="/panel-shell.css">
+</head>
+<body class="review-page">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">M</span><div><div class="brand-title">哈基米 · 复盘变化</div><div class="brand-sub">DSH 互动复盘 · 好感与亲近的变化记录</div></div></div>
+    <nav class="view-nav" aria-label="视图"><a class="nav-button" href="/">关系面板</a><a class="nav-button" href="/identity.html">旧群与成员匹配</a><a class="nav-button active" href="/review-history.html" aria-current="page">复盘变化</a></nav>
+    <button type="button" class="ghost-button" id="refreshHistory">刷新</button>
+  </header>
+  <main class="review-main">
+    <section class="review-intro">
+      <div><span class="review-eyebrow">关系的变化，有迹可循</span><h1>每一次靠近，或退后</h1><p>查看实际互动后发生的分数变化，以及后来的人物笔记如何修订同一事件。</p></div>
+      <div class="retention-note">详细变化：30 天 / 最多 1000 条<br>日摘要：1 年 / 最多 3000 条<br><strong>清理记录不清零累计分数</strong></div>
+    </section>
+    <div class="banner" id="historyHealth" role="status" aria-live="polite" hidden></div>
+    <div class="banner error" id="historyError" role="alert" hidden></div>
+    <section class="review-surface" aria-label="复盘记录">
+      <div class="review-tabs" role="tablist" aria-label="记录形式"><button type="button" id="changesTab" role="tab" aria-selected="true" class="active" data-history-view="changes">详细变化</button><button type="button" id="dailyTab" role="tab" aria-selected="false" data-history-view="daily">日摘要</button><span id="historyStatus" class="muted" role="status">等待连接</span></div>
+      <form id="historyFilters" class="review-filters">
+        <label>人物 ID<input id="historyPerson" inputmode="numeric" maxlength="20" placeholder="全部人物"></label>
+        <label>群与私聊<select id="historyGroup"><option value="">全部群</option></select></label>
+        <label>复盘来源<select id="historySource"><option value="">全部来源</option><option value="window">回复窗口</option><option value="note">人物笔记复核</option><option value="daily">日常互动</option><option value="legacy">较早记录</option></select></label>
+        <label>开始日期<input type="date" id="historySince"></label><label>结束日期<input type="date" id="historyUntil"></label>
+        <button type="submit" class="primary-button">筛选</button><button type="button" class="ghost-button" id="historyReset">重置</button>
+      </form>
+      <div class="review-summary"><span id="historyCount">—</span><span id="historyScore" class="muted"></span></div>
+      <div class="review-table-wrap"><table class="review-table"><thead><tr><th scope="col">时间 / 来源</th><th scope="col">人物 / 群</th><th scope="col">好感变化</th><th scope="col">亲近变化</th><th scope="col" class="reason-column">事件与原因</th></tr></thead><tbody id="historyRows"></tbody></table></div>
+      <div id="historyEmpty" class="review-empty" hidden><span class="empty-symbol">○</span><h2>还没有符合条件的变化</h2><p>复盘完成后，有分数变化的事件会显示在这里。可以调整筛选，或稍后刷新。</p></div>
+      <div class="pager-row review-pager"><button type="button" class="ghost-button" id="historyPrev" disabled>上一页</button><span id="historyPage" class="muted">第 1 页</span><button type="button" class="ghost-button" id="historyNext" disabled>下一页</button></div>
+    </section>
+    <p class="review-footnote">笔记复核优先于同一事件的窗口或日常判断，以替换方式修订；不同事件的贡献继续保留。日摘要的合计变化与起终分数分别记录，可能因其他调整或边界截断而不同。原始证据到期后，累计评分仍保留。</p>
+  </main>
+  <div class="overlay" id="tokenGate" hidden><div class="dialog small-dialog" role="dialog" aria-modal="true" aria-labelledby="tokenTitle"><h2 id="tokenTitle">打开复盘变化</h2><p>使用记忆面板的本地访问口令。</p><form id="tokenForm"><input id="tokenInput" type="password" autocomplete="off" placeholder="粘贴本地访问口令"><button type="submit" class="primary-button">进入</button></form><p id="tokenError" class="muted" hidden></p></div></div>
+  <script src="/review-history.js"></script>
+</body>
+</html>

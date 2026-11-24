@@ -1,0 +1,14 @@
+[Unit]
+Description=Hakimi daily private diary writing
+After=hakimi-keyring.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=@ROOT@
+ExecStart=@VENV@/bin/python -m hakimi.ops.cloud_service diary
+Environment=HAKIMI_ROOT=@ROOT@
+Environment=TZ=America/New_York
+Environment=PYTHONDONTWRITEBYTECODE=1
+TimeoutStartSec=240
+Nice=10
+UMask=0077

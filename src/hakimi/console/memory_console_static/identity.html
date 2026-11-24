@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <script defer src="/panel-shell.js"></script><title>哈基米 · 旧群与成员匹配</title>
+  <link rel="stylesheet" href="/identity.css">
+  <link rel="stylesheet" href="/vertex-budget.css"><link rel="stylesheet" href="/panel-shell.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">ID</span>
+        <div>
+          <div class="brand-title">旧群与成员匹配</div>
+          <div class="brand-sub">仅保存旧群与新群、旧成员与新成员的对应关系 · 不复制聊天 · 不改旧原文 · 每一步都由你手动确认</div>
+        </div>
+      </div>
+      <nav class="top-actions" aria-label="导航">
+        <a class="ghost-link" href="/">返回关系面板</a>
+        <button type="button" class="ghost-button" id="refreshAll">刷新目录</button>
+      </nav>
+      <div class="live-status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">正在连接…</span>
+        <span class="sync-count" id="revisionLabel"></span>
+      </div>
+    </header>
+
+    <div class="vertex-budget" id="vertexBudgetBar" role="status" aria-live="polite" hidden></div>
+
+    <div class="banner" id="banner" hidden></div>
+
+    <main class="identity-layout">
+      <section class="card intro-card">
+        <h1>先匹配群，再匹配成员</h1>
+        <p>旧数据只读。名字相同不会自动算同一个人；每一步都由你确认。群和成员都保存后，关系面板才会把对应的旧笔记以“历史原文 / 旧摘要”显示，并明确标出旧群、旧QQ与新群、新ID。解除匹配后，下一次检索立即隐藏。</p>
+        <div class="flow">
+          <span>1. 选旧群</span><span>2. 选新群</span><span>3. 预览并保存</span>
+          <span>4. 选旧成员</span><span>5. 选新成员</span><span>6. 预览并保存</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2>第一步 · 旧群 → 新群</h2>
+            <p class="muted">旧群来自旧系统的公开群记录和旧版手记；新群只来自新通道已经出现或已确认的群。</p>
+          </div>
+          <span class="tag" id="groupLinkCount">已匹配 0 组</span>
+        </div>
+
+        <div class="two-columns">
+          <div class="column">
+            <div class="column-head">
+              <h3>旧群</h3><span class="muted" id="oldGroupCount"></span>
+            </div>
+            <input id="oldGroupSearch" class="search" type="search" autocomplete="off" placeholder="搜索旧群名称或编号">
+            <div id="oldGroupList" class="pick-list" aria-live="polite"></div>
+          </div>
+          <div class="column">
+            <div class="column-head">
+              <h3>新群</h3><span class="muted" id="newGroupCount"></span>
+            </div>
+            <input id="newGroupSearch" class="search" type="search" autocomplete="off" placeholder="搜索新群名称或编号">
+            <div id="newGroupList" class="pick-list" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div class="action-strip">
+          <div class="selection" id="groupSelection">尚未选择旧群和新群</div>
+          <div class="button-row">
+            <button type="button" class="ghost-button" id="previewGroup" disabled>预览群匹配</button>
+            <button type="button" class="primary-button" id="saveGroup" disabled>保存群匹配</button>
+          </div>
+        </div>
+
+        <div class="preview-box" id="groupPreview" hidden></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2>第二步 · 旧成员 → 新成员</h2>
+            <p class="muted">成员必须在已保存的群对应关系内一一对应。新成员只会从该新群的实际聊天记录中列出；其他观察目录只用于辅助核对，不当作群成员证据。</p>
+          </div>
+          <span class="tag" id="memberLinkCount">已匹配 0 人</span>
+        </div>
+
+        <div class="group-pair" id="memberGroupPair">
+          请先完成群匹配，或在上面选择一组旧群/新群。
+        </div>
+
+        <div class="two-columns member-columns">
+          <div class="column">
+            <div class="column-head">
+              <h3>旧成员</h3><span class="muted" id="oldMemberCount"></span>
+            </div>
+            <input id="oldMemberSearch" class="search" type="search" autocomplete="off" placeholder="搜索旧昵称或旧QQ号">
+            <div id="oldMemberList" class="pick-list member-list" aria-live="polite"></div>
+            <div class="manual-box">
+              <label for="manualOldUser">没有旧记录？手填旧QQ（会明确标“尚无旧笔记”）</label>
+              <div class="manual-row">
+                <input id="manualOldUser" type="text" inputmode="numeric" autocomplete="off" placeholder="例如 123456789">
+                <button type="button" class="ghost-button" id="useManualOldUser">使用这个旧QQ</button>
+              </div>
+            </div>
+          </div>
+          <div class="column">
+            <div class="column-head">
+              <h3>新成员</h3><span class="muted" id="newMemberCount"></span>
+            </div>
+            <input id="newMemberSearch" class="search" type="search" autocomplete="off" placeholder="搜索新昵称或新通道成员编号">
+            <div id="newMemberList" class="pick-list member-list" aria-live="polite"></div>
+            <p class="hint">新成员如果只出现在其他群或观察目录、本群没有真实聊天记录，这里不会列出；请先在本群确认他的记录，再回来选择。</p>
+          </div>
+        </div>
+
+        <div class="action-strip">
+          <div class="selection" id="memberSelection">尚未选择旧成员和新成员</div>
+          <div class="button-row">
+            <button type="button" class="ghost-button" id="previewMember" disabled>预览成员匹配</button>
+            <button type="button" class="primary-button" id="saveMember" disabled>保存成员匹配</button>
+          </div>
+        </div>
+
+        <div class="preview-box" id="memberPreview" hidden></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2>已保存的对应关系</h2>
+            <p class="muted">解除群对应前会预览会失效多少条成员对应。重新绑定同一组可恢复因解除群而失效的成员对应；“单独解除”的成员需要重新选择。</p>
+          </div>
+          <span class="tag" id="revisionTag">版本 0</span>
+        </div>
+        <div class="match-tabs">
+          <button type="button" class="tab-button active" data-match-tab="groupLinks">群匹配</button>
+          <button type="button" class="tab-button" data-match-tab="memberLinks">成员匹配</button>
+          <button type="button" class="tab-button" data-match-tab="audit">操作记录</button>
+        </div>
+        <div id="groupLinksPane" class="match-pane"></div>
+        <div id="memberLinksPane" class="match-pane" hidden></div>
+        <div id="auditPane" class="match-pane" hidden></div>
+        <div class="preview-box" id="unlinkPreview" hidden></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="overlay" id="tokenGate" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="tokenTitle">
+      <h2 id="tokenTitle">打开旧群与成员匹配</h2>
+      <p>从这个本机页面打开时需要本地访问口令。它只留在当前标签页的 sessionStorage，不写进网址收藏，也不会发到群里。</p>
+      <form id="tokenForm">
+        <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴至少32字节的本地访问口令">
+        <button type="submit" class="primary-button">进入</button>
+      </form>
+      <p class="error" id="tokenError" hidden></p>
+    </div>
+  </div>
+
+  <div class="overlay" id="legacyModal" hidden>
+    <div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="legacyTitle">
+      <div class="dialog-head">
+        <h2 id="legacyTitle">旧笔记原文</h2>
+        <button type="button" class="icon-button" id="legacyClose" aria-label="关闭">×</button>
+      </div>
+      <div id="legacyBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="/identity.js"></script>
+  <script src="/identity-member-context.js"></script>
+  <script src="/vertex-budget.js"></script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <script defer src="/panel-shell.js"></script><title>哈基米 · 数据面板</title>
+  <link rel="stylesheet" href="/styles.css?v=8.3">
+  <link rel="stylesheet" href="/vertex-budget.css"><link rel="stylesheet" href="/panel-shell.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">M</span>
+        <div>
+          <div class="brand-title">哈基米 · 数据面板</div>
+          <div class="brand-sub">本地只读 · 真实数据库 · 来源分层</div>
+        </div>
+      </div>
+      <nav class="view-nav" aria-label="视图">
+        <button type="button" class="nav-button active" data-view="graph">关系面板</button>
+        <button type="button" class="nav-button" data-view="library">记忆库</button>
+        <a class="nav-button" href="/messages.html">消息日志</a> <a class="nav-button" href="/activity.html">视频活动</a>
+        <a class="nav-button" href="/review-history.html">复盘变化</a>
+        <a class="nav-button identity-entry" id="identityEntry" href="/identity.html" title="手动把旧群/旧成员关联到新通道">旧群与成员匹配</a>
+      </nav>
+      <div class="live-status" id="liveStatus" title="每5秒检查一次版本变化">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">正在连接…</span>
+        <span class="sync-count" id="syncCount"></span>
+      </div>
+    </header>
+
+    <div class="vertex-budget" id="vertexBudgetBar" role="status" aria-live="polite" hidden></div>
+
+    <div class="banner" id="banner" hidden></div>
+
+    <main class="layout">
+      <aside class="left-panel">
+        <div class="panel-heading">
+          <h2>人物</h2>
+          <span class="muted" id="peopleTotal"></span>
+        </div>
+        <div class="search-row">
+          <input id="peopleSearch" type="search" autocomplete="off" placeholder="搜索昵称、QQ号或聊天内容">
+        </div>
+        <div class="filter-row">
+          <label class="field-label" for="groupFilter">范围</label>
+          <select id="groupFilter">
+            <option value="">全部群</option>
+          </select>
+        </div>
+        <div class="people-list" id="peopleList" aria-live="polite"></div>
+        <div class="pager-row" id="peoplePager">
+          <button type="button" class="ghost-button" id="peoplePrev" disabled>上一页</button>
+          <span class="muted" id="peoplePageLabel"></span>
+          <button type="button" class="ghost-button" id="peopleNext" disabled>下一页</button>
+        </div>
+        <div class="side-note">
+          <strong>关系不是流量。</strong>
+          互动次数只用于“互动熟悉度”，不等于好感；没有材料的关系保持“待了解”。
+        </div>
+      </aside>
+
+      <section class="center-panel">
+        <div id="graphView" class="graph-view">
+          <div class="canvas-toolbar">
+            <div class="control-group">
+              <label for="nodeLimit">人数 <output id="nodeLimitValue">35</output></label>
+              <input id="nodeLimit" type="range" min="20" max="160" step="5" value="35">
+            </div>
+            <div class="control-group">
+              <label for="spacing">间距 <output id="spacingValue">110</output></label>
+              <input id="spacing" type="range" min="60" max="220" step="5" value="110">
+            </div>
+            <div class="control-group">
+              <label for="threshold">关系门槛 <output id="thresholdValue">0</output></label>
+              <input id="threshold" type="range" min="0" max="100" step="5" value="0">
+            </div>
+            <div class="control-group">
+              <label for="measure">高亮指标</label>
+              <select id="measure">
+                <option value="affinity">好感</option>
+                <option value="closeness">亲近程度</option>
+                <option value="interaction">互动熟悉度</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="source">评分来源</label>
+              <select id="source">
+                <option value="unified" selected>最新综合判断</option>
+                <option value="assisted">DSH 辅助整理</option>
+                <option value="terra">Terra 观察</option>
+                <option value="manual">亲笔评分</option>
+              </select>
+            </div>
+            <label class="check-control"><input id="labelToggle" type="checkbox" checked> 显示标签</label>
+            <div class="zoom-controls" aria-label="缩放">
+              <button type="button" id="zoomOut" title="缩小">−</button>
+              <button type="button" id="zoomReset" title="复位缩放与布局">复位</button>
+              <button type="button" id="zoomIn" title="放大">＋</button>
+            </div>
+          </div>
+          <div class="canvas-wrap" id="canvasWrap">
+            <svg id="graphSvg" role="img" aria-label="人物关系画布" preserveAspectRatio="xMidYMid meet"></svg>
+            <div class="canvas-empty" id="canvasEmpty" hidden>
+              <strong>当前范围还没有可画的人物</strong>
+              <span>换一个群，或先让记忆库写入聊天与人物笔记。</span>
+            </div>
+            <div class="metric-legend" id="metricLegend" aria-label="图例"></div>
+          </div>
+          <div class="canvas-footer">
+            <span id="graphSummary">加载中…</span>
+            <span class="muted" id="graphHint">默认隐藏边数字；选中人物后仅其相连边显示，取消选择恢复隐藏。拖动平移、滚轮缩放；线不表示单一方向，方向见悬停与右侧详情。</span>
+          </div>
+        </div>
+
+        <div id="libraryView" class="library-view" hidden>
+          <div class="library-toolbar">
+            <div class="search-row grow">
+              <input id="memorySearch" type="search" autocomplete="off" placeholder="全库搜索记忆原文、事项或人物编号">
+            </div>
+            <select id="memoryKind" aria-label="记忆类型">
+              <option value="">全部类型</option>
+              <option value="chat">聊天原话</option>
+              <option value="person">人物</option>
+              <option value="preference">偏好</option>
+              <option value="lore">考据</option>
+              <option value="episode">共同经历</option>
+              <option value="reflection">主观反思</option>
+              <option value="commitment">约定</option>
+            </select>
+            <button type="button" class="ghost-button" id="clearPersonFilter" hidden>清除人物筛选</button>
+          </div>
+          <div class="library-summary" id="librarySummary"></div>
+          <div class="memory-list" id="memoryList" aria-live="polite"></div>
+          <div class="pager-row library-pager">
+            <button type="button" class="ghost-button" id="memoryPrev">上一页</button>
+            <span class="muted" id="memoryPageLabel"></span>
+            <button type="button" class="ghost-button" id="memoryNext">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="right-panel" id="detailPane">
+        <div class="detail-empty" id="detailEmpty">
+          <div class="detail-empty-mark">选择一个人物</div>
+          <p>左侧搜索不受画布人数限制。点人物查看她记下的原文、辅助整理和真实互动依据；点关系线查看方向、性质与出处。</p>
+          <div class="legend-card">
+            <h3>关系图读法</h3>
+            <p><span class="tag tag-manual">亲笔</span> 实线 · <span class="tag tag-assisted">辅助</span> 虚线 · <span class="tag tag-terra">Terra</span> 点线；Terra 群友关系另有紫色虚线底衬。</p>
+            <p>分数颜色：0–19 红、20–39 橙、40–59 灰蓝、60–79 青绿、80–100 绿。未知是“待了解”，不按 0 画数字。</p>
+            <p>边数字只在选中人物时显示，且只标相连边。亲笔无分时，群友-群友关系可用 Terra 同指标分数作紫色虚线视觉叠加；悬停会注明 Terra 来源，不是亲笔分，也不参与亲笔门槛。</p>
+            <p class="muted">关系线本身不表示单一方向；方向见悬停、选中边标注与右侧详情。</p>
+          </div>
+        </div>
+        <div class="detail-content" id="detailContent" hidden></div>
+      </aside>
+    </main>
+  </div>
+
+  <div class="overlay" id="tokenGate" hidden>
+    <div class="dialog small-dialog" role="dialog" aria-modal="true" aria-labelledby="tokenTitle">
+      <h2 id="tokenTitle">打开本地记忆面板</h2>
+      <p>从本机入口打开时会自动带入访问口令。如果没有自动打开，请粘贴本地访问口令；它只留在当前标签页，不会发到群里，也不会写进收藏网址。</p>
+      <form id="tokenForm">
+        <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴至少32字节的本地访问口令">
+        <button type="submit" class="primary-button">进入</button>
+      </form>
+      <p class="muted" id="tokenError" hidden></p>
+    </div>
+  </div>
+
+  <div class="overlay" id="memoryModal" hidden>
+    <div class="dialog memory-dialog" role="dialog" aria-modal="true" aria-labelledby="memoryTitle">
+      <div class="dialog-head">
+        <h2 id="memoryTitle">记忆原文</h2>
+        <button type="button" class="icon-button" id="memoryClose" aria-label="关闭">×</button>
+      </div>
+      <div id="memoryBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="/layout.js"></script>
+  <script src="/app.js?v=8.3"></script>
+  <script src="/vertex-budget.js"></script>
+</body>
+</html>

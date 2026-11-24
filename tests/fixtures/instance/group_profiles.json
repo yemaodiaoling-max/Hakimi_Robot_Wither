@@ -1,0 +1,215 @@
+{
+  "version": 1,
+  "default_profile": "quiet_default",
+  "private_profile": "gentle_daily",
+  "profiles": {
+    "quiet_default": {
+      "tone": "示例笔记（已脱敏）",
+      "humor": "示例笔记（已脱敏）",
+      "cat_identity": "示例笔记（已脱敏）",
+      "length": "示例笔记（已脱敏）",
+      "boundaries": [
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "tech_banter": {
+      "tone": "示例笔记（已脱敏）",
+      "humor": "示例笔记（已脱敏）",
+      "cat_identity": "示例笔记（已脱敏）",
+      "length": "示例笔记（已脱敏）",
+      "boundaries": [
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "lore_club": {
+      "tone": "示例笔记（已脱敏）",
+      "game_text_sources": {
+        "task_text": "示例笔记（已脱敏）",
+        "world_quests": "示例笔记（已脱敏）",
+        "books": "示例笔记（已脱敏）",
+        "examples": "示例笔记（已脱敏）",
+        "source_rule": "示例笔记（已脱敏）"
+      },
+      "humor": "示例笔记（已脱敏）",
+      "cat_identity": "示例笔记（已脱敏）",
+      "length": "示例笔记（已脱敏）",
+      "boundaries": [
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "gentle_daily": {
+      "tone": "示例笔记（已脱敏）",
+      "humor": "示例笔记（已脱敏）",
+      "cat_identity": "示例笔记（已脱敏）",
+      "length": "示例笔记（已脱敏）",
+      "boundaries": [
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "playful_acg": {
+      "tone": "示例笔记（已脱敏）",
+      "humor": "示例笔记（已脱敏）",
+      "cat_identity": "示例笔记（已脱敏）",
+      "length": "示例笔记（已脱敏）",
+      "boundaries": [
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "study_calm": {
+      "tone": "示例笔记（已脱敏）",
+      "humor": "示例笔记（已脱敏）",
+      "cat_identity": "示例笔记（已脱敏）",
+      "length": "示例笔记（已脱敏）",
+      "boundaries": [
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）"
+      ],
+      "participation": "示例笔记（已脱敏）"
+    }
+  },
+  "groups": {
+    "800169734": {
+      "profile": "tech_banter",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "8355220284": {
+      "profile": "lore_club",
+      "basis": "明确群规",
+      "memory_notes": [
+        "示例笔记（已脱敏）",
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "824450670": {
+      "profile": "study_calm",
+      "name": "成员72e5",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "817642244": {
+      "profile": "playful_acg",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": []
+    },
+    "802301005": {
+      "profile": "tech_banter",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": []
+    },
+    "865870410": {
+      "profile": "playful_acg",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "850245632": {
+      "profile": "playful_acg",
+      "name": "成员ee30",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "852912398": {
+      "profile": "gentle_daily",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "8122318590": {
+      "profile": "study_calm",
+      "name": "成员b907",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "8865148556": {
+      "profile": "study_calm",
+      "name": "成员c1fc",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "823021385": {
+      "profile": "study_calm",
+      "name": "成员e2e2",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "811044319": {
+      "profile": "study_calm",
+      "name": "成员53f1",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "834325578": {
+      "profile": "study_calm",
+      "name": "成员55fa",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "833013516": {
+      "profile": "study_calm",
+      "name": "成员0ae1",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "811220039": {
+      "profile": "study_calm",
+      "name": "成员f429",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "830662541": {
+      "profile": "study_calm",
+      "name": "成员0711",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "8470328565": {
+      "profile": "study_calm",
+      "name": "成员5d40",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    "867614349": {
+      "profile": "study_calm",
+      "name": "成员f0b3",
+      "basis": "示例笔记（已脱敏）",
+      "memory_notes": [
+        "示例笔记（已脱敏）"
+      ]
+    }
+  }
+}

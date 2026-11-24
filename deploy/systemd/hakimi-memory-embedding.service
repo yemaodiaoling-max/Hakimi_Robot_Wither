@@ -1,0 +1,23 @@
+[Unit]
+Description=Hakimi local semantic memory encoder
+
+[Service]
+Type=simple
+WorkingDirectory=@RUNTIME@
+Environment=HAKIMI_ROOT=@ROOT@
+Environment=HAKIMI_BASE=@RUNTIME@
+Environment=HF_HUB_OFFLINE=1
+Environment=OMP_NUM_THREADS=1
+Environment=TOKENIZERS_PARALLELISM=false
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=@ENCODER_VENV@/bin/python -m hakimi.memory.memory_embedding_service --serve --db @RUNTIME@/state/memory.sqlite3 --cache-dir %h/.local/share/hakimi-memory-encoder/models --host 127.0.0.1 --port 18766 --threads 1 --index-interval 15 --index-batch 24
+Restart=on-failure
+RestartSec=5
+Nice=10
+CPUQuota=80%
+MemoryMax=700M
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

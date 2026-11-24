@@ -1,0 +1,443 @@
+{
+  "version": 1,
+  "source": "dsh_assisted",
+  "generated_by": "dsh",
+  "generated_at": 8625198640,
+  "evidence_file": "../social-evidence.json",
+  "scope": "public_group_only",
+  "notice": "示例笔记（已脱敏）",
+  "people": [
+    {
+      "seed_id": "person-tianran-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8144855182370135147",
+      "nickname": "成员03d6",
+      "session": "group:8897214342503901650",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 78,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2870",
+        "M2877",
+        "M2891",
+        "M2786",
+        "M2778"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-majiang-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8461951403792244333",
+      "nickname": "成员63cb",
+      "session": "group:8897214342503901650",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 60,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2876",
+        "M2619",
+        "M1182",
+        "M1180"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-jing-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8490003955764560144",
+      "nickname": "成员1463",
+      "session": "group:8897214342503901650",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 74,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2892",
+        "M2887",
+        "M2878",
+        "M2785"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-yemao-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8112866014149232024",
+      "nickname": "成员adc4",
+      "session": "group:8897214342503901650",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 80,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2853",
+        "M2856",
+        "M2769",
+        "M2784"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-jiangao-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8158246424856248530",
+      "nickname": "成员912c",
+      "session": "group:8351481345014168823",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": 58,
+      "closeness": 35,
+      "confidence": 68,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2766",
+        "M2767",
+        "M2762",
+        "M2782"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-mo-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8593431636519228353",
+      "nickname": "成员6bbf",
+      "session": "group:8355220284",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 76,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2533",
+        "M2519",
+        "M2516",
+        "M2453"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-qianye-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8339168153543054203",
+      "nickname": "成员3d79",
+      "session": "group:8355220284",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 74,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2573",
+        "M2568",
+        "M2562",
+        "M2548"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-lianqiu-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8012254646143004904",
+      "nickname": "成员e7cf",
+      "session": "group:8355220284",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 72,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2149",
+        "M2154",
+        "M2138",
+        "M2126"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-boluobao-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8880547846290471288",
+      "nickname": "成员b0f6",
+      "session": "group:8355220284",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 70,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2219",
+        "M2215",
+        "M2208",
+        "M2195"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-150-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8935443245549191552",
+      "nickname": "成员f031",
+      "session": "group:8355220284",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": 15,
+      "closeness": null,
+      "confidence": 55,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M1677",
+        "M1676",
+        "M1673",
+        "M1669"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "person-xin-20261027",
+      "subject_id": "hakimi",
+      "target_id": "8895533205115212438",
+      "nickname": "成员0101",
+      "session": "group:8355220284",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 70,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2434",
+        "M2424",
+        "M2395",
+        "M2364"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    }
+  ],
+  "relations": [
+    {
+      "seed_id": "relation-majiang-jing-20261027",
+      "subject_id": "8461951403792244333",
+      "target_id": "8490003955764560144",
+      "session": "group:8897214342503901650",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 55,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2876",
+        "M1182",
+        "M1180",
+        "M1175"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "relation-yemao-jing-20261027",
+      "subject_id": "8112866014149232024",
+      "target_id": "8490003955764560144",
+      "session": "group:8897214342503901650",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 65,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M1197",
+        "M1232",
+        "M1236",
+        "M2784"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "relation-mo-xin-20261027",
+      "subject_id": "8593431636519228353",
+      "target_id": "8895533205115212438",
+      "session": "group:8355220284",
+      "relationship_type": "剧情考据争论",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 78,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2166",
+        "M2105",
+        "M2165",
+        "M2117"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "relation-lianqiu-xin-20261027",
+      "subject_id": "8012254646143004904",
+      "target_id": "8895533205115212438",
+      "session": "group:8355220284",
+      "relationship_type": "主线推演争论",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 78,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2103",
+        "M2085",
+        "M2065",
+        "M2011"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "relation-150-7200-20261027",
+      "subject_id": "8935443245549191552",
+      "target_id": "8540404311103067311",
+      "session": "group:8355220284",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 60,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M908",
+        "M852",
+        "M844",
+        "M872"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "relation-tianran-jing-20261027",
+      "subject_id": "8144855182370135147",
+      "target_id": "8490003955764560144",
+      "session": "group:8897214342503901650",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 50,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M1798",
+        "M1796",
+        "M1741",
+        "M2560"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "relation-jiangao-yemao-20261026",
+      "subject_id": "8158246424856248530",
+      "target_id": "8112866014149232024",
+      "session": "group:8351481345014168823",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 55,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M2753",
+        "M345",
+        "M339",
+        "M327"
+      ],
+      "evidence_dates": [
+        "2026-10-26",
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    },
+    {
+      "seed_id": "relation-majiang-yemao-20261027",
+      "subject_id": "8461951403792244333",
+      "target_id": "8112866014149232024",
+      "session": "group:8897214342503901650",
+      "relationship_type": "示例笔记（已脱敏）",
+      "affinity": null,
+      "closeness": null,
+      "confidence": 55,
+      "impression": "示例笔记（已脱敏）",
+      "reason": "示例笔记（已脱敏）",
+      "evidence_memory_ids": [
+        "M1361",
+        "M992",
+        "M2768"
+      ],
+      "evidence_dates": [
+        "2026-10-27"
+      ],
+      "source": "dsh_assisted"
+    }
+  ]
+}

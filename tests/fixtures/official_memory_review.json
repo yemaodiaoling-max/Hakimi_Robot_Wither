@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "source_file": "memory.md",
+  "source_group": "850245632",
+  "source_snapshot": "state/memory_migration_sources/group_850245632_20261023.md",
+  "source_block_sha256": "1bdbdf7e6a804471dcdc4b935a821b1ab6756bc5057ed128dc6a7cb89bb9d1f4",
+  "group_notes": [
+    {
+      "session_key": "group:850245632",
+      "note": "示例笔记（已脱敏）"
+    },
+    {
+      "session_key": "group:850245632",
+      "note": "示例笔记（已脱敏）"
+    },
+    {
+      "session_key": "group:850245632",
+      "note": "示例笔记（已脱敏）"
+    }
+  ],
+  "pending_members": [
+    {
+      "old_qq": "8324603312",
+      "old_nickname": "成员f851",
+      "notes": []
+    },
+    {
+      "old_qq": "808639025",
+      "old_nickname": "成员ceb6",
+      "notes": [
+        "示例笔记（已脱敏）"
+      ]
+    },
+    {
+      "old_qq": "8314279225",
+      "old_nickname": "成员6c7d",
+      "notes": [
+        "示例笔记（已脱敏）"
+      ]
+    }
+  ],
+  "excluded": "示例笔记（已脱敏）",
+  "group_reviews": {
+    "8355220284": {
+      "version": 1,
+      "source_file": "memory.md",
+      "source_group": "8355220284",
+      "source_snapshot": "state/memory_migration_sources/group_8355220284_20261023.md",
+      "source_block_sha256": "a5e17a9312dfb1a330f8587380d46c9a9d52a2a5243ff813c1b845a843218acb",
+      "group_notes": [
+        {
+          "session_key": "group:8355220284",
+          "note": "示例笔记（已脱敏）"
+        },
+        {
+          "session_key": "group:8355220284",
+          "note": "示例笔记（已脱敏）"
+        }
+      ],
+      "pending_members": [],
+      "excluded": "示例笔记（已脱敏）"
+    }
+  }
+}

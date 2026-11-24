@@ -1,0 +1,9 @@
+{
+  "max_mb": {
+    "image": 30,
+    "video": 100,
+    "voice": 20,
+    "file": 100
+  },
+  "upload_timeout_seconds": 180
+}

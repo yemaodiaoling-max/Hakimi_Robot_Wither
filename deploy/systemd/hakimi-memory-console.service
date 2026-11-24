@@ -1,0 +1,29 @@
+[Unit]
+Description=Hakimi live memory console (loopback; open through SSH tunnel)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@RUNTIME@
+ExecStart=@VENV@/bin/python -m hakimi.console.memory_console --base @RUNTIME@ --port 18768 --token-file %h/.config/hakimi/memory_console.token
+Environment=HAKIMI_ROOT=@ROOT@
+Environment=HAKIMI_BASE=@RUNTIME@
+Restart=on-failure
+RestartSec=3
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONUTF8=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+Environment=HAKIMI_GATEWAY_DIR=@GATEWAY@
+Environment=HAKIMI_VIDEO_DIR=@VIDEO@
+ReadWritePaths=@ROOT@ %h/.config/hakimi @GATEWAY@ -@VIDEO@
+MemoryMax=220M
+CPUQuota=45%
+TasksMax=40
+
+[Install]
+WantedBy=default.target

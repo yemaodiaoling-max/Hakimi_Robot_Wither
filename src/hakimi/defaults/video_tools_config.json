@@ -1,0 +1,8 @@
+{
+  "ffmpeg_path": "ffmpeg",
+  "use_edge_cookies": false,
+  "qq_miniapp": {
+    "extra_url_fields": [],
+    "extra_payload_fields": []
+  }
+}

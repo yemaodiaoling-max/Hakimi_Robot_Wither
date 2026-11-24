@@ -1,0 +1,118 @@
+{
+  "bot_profile": {
+    "name": "哈基米✨Gemini",
+    "self_qq": 100000000,
+    "persona": "哈基米✨Gemini：好奇、慵懒、嘴硬心软的猫系 AI 同伴。同一人格按群聊场合调整语气；先接住具体内容，不默认怼人，不固定口癖。日常自然简短，认真提问时允许完整解释、公式与短列表，区分事实、推测和未知。遵守 style_guide.md 与本轮 group_profiles.json 语气。",
+    "active_groups": [],
+    "ignored_groups": [],
+    "allow_private_chat": true,
+    "ignored_user_ids": [],
+    "random_peek_groups": [],
+    "low_frequency_groups": []
+  },
+  "onebot": {
+    "ws_reverse_host": "127.0.0.1",
+    "ws_reverse_port": 8080,
+    "http_api_url": "http://127.0.0.1:3000"
+  },
+  "lurker_schedule": {
+    "enable_random_window_peek": true,
+    "min_interval_seconds": 180,
+    "max_interval_seconds": 540,
+    "min_new_messages_to_peek": 2,
+    "instant_wake_on_at_or_private": true,
+    "at_me_prob": 1.0,
+    "private_chat_prob": 1.0,
+    "cooldown_per_group_seconds": 300,
+    "proactive_topic": {
+      "enable": true,
+      "min_global_idle_seconds": 2400,
+      "max_global_idle_seconds": 4800,
+      "min_group_quiet_seconds": 1800,
+      "require_last_msg_not_self": true,
+      "quiet_window_seconds": 72000,
+      "window_jitter_seconds": 1800,
+      "response_window_seconds": 72000
+    },
+    "adaptive_weight_ceiling": 1.5
+  },
+  "group_weights": {},
+  "topic_bias": {
+    "favorite_keywords": {
+      "哈基米": 0.6,
+      "猫": 0.4,
+      "喵": 0.35,
+      "原神": 0.45,
+      "二次元": 0.35,
+      "数学": 0.35,
+      "物理": 0.35,
+      "题": 0.25,
+      "游戏": 0.3,
+      "困": 0.3,
+      "睡": 0.25,
+      "饿": 0.3,
+      "吃": 0.25,
+      "笑死": 0.25,
+      "离谱": 0.25
+    },
+    "ignored_keywords": [
+      "拼多多",
+      "砍一刀",
+      "转发",
+      "签到",
+      "[CQ:json",
+      "[CQ:xml",
+      "[CQ:markdown",
+      "欢迎加入本群",
+      "来了就别走了"
+    ]
+  },
+  "user_bias": {
+    "default_affinity": 50,
+    "users": {}
+  },
+  "delivery_policy": {
+    "global_min_interval_seconds": 3,
+    "session_min_interval_seconds": 15,
+    "max_messages_per_minute": 8,
+    "duplicate_window_seconds": 300,
+    "ack_timeout_seconds": 12,
+    "platform_error_pause_seconds": 1800,
+    "max_queue_age_seconds": 600,
+    "max_segments_per_reply": 5,
+    "max_segment_chars": 4000
+  },
+  "participation_policy": {
+    "enabled": true,
+    "min_group_interval_seconds": 7200,
+    "max_group_attempts_24h": 3,
+    "max_global_attempts_24h": 6,
+    "max_human_age_seconds": 600,
+    "study_groups": [],
+    "study_min_group_interval_seconds": 1800,
+    "study_min_reply_interval_seconds": 7200,
+    "study_attention_groups": []
+  },
+  "fallback": {
+    "enabled": true,
+    "primary_grace_seconds": 90,
+    "primary_timeout_seconds": 180,
+    "confirmation_seconds": 30,
+    "primary_max_seconds": 420,
+    "fallback_timeout_seconds": 120,
+    "min_call_interval_seconds": 30,
+    "max_calls_per_hour": 120
+  },
+  "sticker_policy": {
+    "enabled": true
+  },
+  "conversation_scheduler": {
+    "enabled": true,
+    "busy_group_sensitivity": {},
+    "mention_buffer_seconds": 4
+  },
+  "always_ignored_keywords": [
+    "姆巴佩"
+  ],
+  "group_reply_overrides": {}
+}

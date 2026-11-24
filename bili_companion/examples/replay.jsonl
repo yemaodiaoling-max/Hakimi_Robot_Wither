@@ -1,0 +1,10 @@
+{"id": "v1", "type": "video", "bvid": "BV_SYNTHETIC", "cid": "demo", "position": 120, "watch_epoch": 0}
+{"id": "on1", "type": "live_status", "room_id": "8729095131", "session_id": "synthetic-live-1", "sequence": 1, "at": 1793561000, "status": "online"}
+{"id": "loss1", "type": "stream_lost", "session_id": "synthetic-live-1", "watch_epoch": 2, "sequence": 1}
+{"id": "recover1", "type": "stream_restored", "session_id": "synthetic-live-1", "watch_epoch": 2, "sequence": 2}
+{"type": "evidence", "evidence": {"id": "e1", "scope": {"account_id": "offline-demo", "kind": "live_room", "identity": "8729095131"}, "session_id": "synthetic-live-1", "text": "合成画面：蓝色方块到达终点", "observed_at": 1793561010, "media_start": 0, "media_end": 5, "modality": "video", "attribution": "observation"}}
+{"type": "candidate", "watch_epoch": 2, "at": 1793561020, "candidate": {"room_id": "8729095131", "session_id": "synthetic-live-1", "text": "到终点啦", "evidence_ids": ["e1"], "expires_at": 1793561040, "dedup_key": "synthetic-finish", "watch_epoch": 2}}
+{"type": "reserve", "id": "model-demo-1", "upper_usd": "0.01", "at": 1793561020}
+{"type": "ambiguous", "request_id": "model-demo-1"}
+{"id": "off1", "type": "live_status", "room_id": "8729095131", "sequence": 2, "at": 1793561100, "status": "offline"}
+{"id": "off2", "type": "live_status", "room_id": "8729095131", "sequence": 3, "at": 1793561160, "status": "offline"}

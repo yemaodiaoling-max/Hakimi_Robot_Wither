@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bili-companion"
+version = "0.4.0"
+description = "Hakimi Bilibili companion with isolated memory and bounded cross-endpoint digests"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+auth = ["cryptography>=43"]
+
+[project.scripts]
+bili-companion = "bili_companion.runtime.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

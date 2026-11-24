@@ -1,0 +1,283 @@
+{
+  "bot_profile": {
+    "name": "成员e718",
+    "self_qq": 8415435122,
+    "persona": "示例笔记（已脱敏）",
+    "active_groups": [],
+    "ignored_groups": [],
+    "allow_private_chat": true,
+    "ignored_user_ids": [
+      "8492618154",
+      "8690097623",
+      "8004420229",
+      "8055403599",
+      "8913401052"
+    ],
+    "random_peek_groups": [
+      "800169734",
+      "8355220284",
+      "824450670",
+      "817642244",
+      "802301005",
+      "865870410",
+      "850245632",
+      "852912398"
+    ],
+    "low_frequency_groups": [
+      "824450670",
+      "817642244",
+      "802301005",
+      "852912398",
+      "834325578",
+      "850245632",
+      "8122318590",
+      "8865148556",
+      "823021385",
+      "811044319",
+      "833013516",
+      "811220039",
+      "830662541",
+      "8470328565",
+      "867614349"
+    ]
+  },
+  "onebot": {
+    "ws_reverse_host": "127.0.0.1",
+    "ws_reverse_port": 8080,
+    "http_api_url": "http://127.0.0.1:3000"
+  },
+  "lurker_schedule": {
+    "enable_random_window_peek": true,
+    "min_interval_seconds": 180,
+    "max_interval_seconds": 540,
+    "min_new_messages_to_peek": 2,
+    "instant_wake_on_at_or_private": true,
+    "at_me_prob": 1.0,
+    "private_chat_prob": 1.0,
+    "cooldown_per_group_seconds": 300,
+    "proactive_topic": {
+      "enable": true,
+      "min_global_idle_seconds": 2400,
+      "max_global_idle_seconds": 4800,
+      "min_group_quiet_seconds": 1800,
+      "require_last_msg_not_self": true,
+      "quiet_window_seconds": 72000,
+      "window_jitter_seconds": 1800,
+      "response_window_seconds": 72000
+    },
+    "adaptive_weight_ceiling": 1.5
+  },
+  "group_weights": {
+    "800169734": {
+      "name": "成员5e8d",
+      "weight": 1.46,
+      "theme": "示例笔记（已脱敏）",
+      "min_score": 0.58
+    },
+    "8355220284": {
+      "name": "成员5ebf",
+      "weight": 1.25,
+      "theme": "示例笔记（已脱敏）",
+      "min_score": 1.19
+    },
+    "824450670": {
+      "name": "成员72e5",
+      "weight": 0.76,
+      "theme": "示例笔记（已脱敏）",
+      "min_score": 0.3
+    },
+    "817642244": {
+      "name": "成员ef0d",
+      "weight": 0.7,
+      "theme": "示例笔记（已脱敏）",
+      "min_score": 0.2
+    },
+    "802301005": {
+      "name": "成员5036",
+      "weight": 0.7,
+      "theme": "示例笔记（已脱敏）",
+      "min_score": 0.2
+    },
+    "865870410": {
+      "name": "成员aed2",
+      "weight": 1.46,
+      "min_score": 0.45,
+      "theme": "日常群聊话题"
+    },
+    "850245632": {
+      "name": "成员ee30",
+      "weight": 1.5,
+      "min_score": 0.18,
+      "theme": "示例笔记（已脱敏）"
+    },
+    "852912398": {
+      "name": "成员178b",
+      "weight": 1.09,
+      "min_score": 0.17,
+      "theme": "日常群聊话题"
+    },
+    "8122318590": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员b907",
+      "theme": "示例笔记（已脱敏）"
+    },
+    "8865148556": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员c1fc",
+      "theme": "示例笔记（已脱敏）"
+    },
+    "823021385": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员e2e2",
+      "theme": "示例笔记（已脱敏）"
+    },
+    "811044319": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员53f1",
+      "theme": "示例笔记（已脱敏）"
+    },
+    "834325578": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员55fa",
+      "theme": "示例笔记（已脱敏）"
+    },
+    "833013516": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员0ae1",
+      "theme": "示例笔记（已脱敏）"
+    },
+    "811220039": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员f429",
+      "theme": "示例笔记（已脱敏）"
+    },
+    "830662541": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员0711",
+      "theme": "示例笔记（已脱敏）"
+    },
+    "8470328565": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员5d40",
+      "theme": "示例笔记（已脱敏）"
+    },
+    "867614349": {
+      "weight": 0.7,
+      "min_score": 0.2,
+      "name": "成员f0b3",
+      "theme": "示例笔记（已脱敏）"
+    }
+  },
+  "topic_bias": {
+    "favorite_keywords": {
+      "哈基米": 0.6,
+      "猫": 0.4,
+      "喵": 0.35,
+      "原神": 0.45,
+      "二次元": 0.35,
+      "数学": 0.35,
+      "物理": 0.35,
+      "题": 0.25,
+      "游戏": 0.3,
+      "困": 0.3,
+      "睡": 0.25,
+      "饿": 0.3,
+      "吃": 0.25,
+      "笑死": 0.25,
+      "离谱": 0.25
+    },
+    "ignored_keywords": [
+      "拼多多",
+      "砍一刀",
+      "转发",
+      "签到",
+      "[CQ:json",
+      "[CQ:xml",
+      "[CQ:markdown",
+      "欢迎加入本群",
+      "来了就别走了"
+    ]
+  },
+  "user_bias": {
+    "default_affinity": 50,
+    "users": {}
+  },
+  "delivery_policy": {
+    "global_min_interval_seconds": 3,
+    "session_min_interval_seconds": 15,
+    "max_messages_per_minute": 8,
+    "duplicate_window_seconds": 300,
+    "ack_timeout_seconds": 12,
+    "platform_error_pause_seconds": 1800,
+    "max_queue_age_seconds": 600,
+    "max_segments_per_reply": 5,
+    "max_segment_chars": 4000
+  },
+  "participation_policy": {
+    "enabled": true,
+    "min_group_interval_seconds": 7200,
+    "max_group_attempts_24h": 3,
+    "max_global_attempts_24h": 6,
+    "max_human_age_seconds": 600,
+    "study_groups": [
+      "824450670",
+      "8122318590",
+      "8865148556",
+      "823021385",
+      "811044319",
+      "834325578",
+      "833013516",
+      "811220039",
+      "830662541",
+      "8470328565",
+      "867614349"
+    ],
+    "study_min_group_interval_seconds": 1800,
+    "study_min_reply_interval_seconds": 7200,
+    "study_attention_groups": [
+      "834325578",
+      "811220039",
+      "811044319",
+      "824450670"
+    ]
+  },
+  "fallback": {
+    "enabled": true,
+    "primary_grace_seconds": 90,
+    "primary_timeout_seconds": 180,
+    "confirmation_seconds": 30,
+    "primary_max_seconds": 420,
+    "fallback_timeout_seconds": 120,
+    "min_call_interval_seconds": 30,
+    "max_calls_per_hour": 120
+  },
+  "sticker_policy": {
+    "enabled": true
+  },
+  "conversation_scheduler": {
+    "enabled": true,
+    "busy_group_sensitivity": {
+      "8355220284": 2.0
+    },
+    "mention_buffer_seconds": 4
+  },
+  "always_ignored_keywords": [
+    "姆巴佩"
+  ],
+  "group_reply_overrides": {
+    "1142791485379513241": {
+      "proactive_probability": 0.4,
+      "max_chars": 40,
+      "max_messages": 2
+    }
+  }
+}

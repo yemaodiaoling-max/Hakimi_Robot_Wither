@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hakimi"
+description = "哈基米：共用一个记忆内核的 QQ 机器人 / B 站视频机器人 / 桌宠"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+dynamic = ["version"]
+# core = memory kernel + console/setup panel + local model gateway
+dependencies = [
+    "cryptography",
+    "tzdata",
+    "Pillow>=12.3",
+]
+
+[project.optional-dependencies]
+qq = ["websockets>=17.3", "markdown-it-py>=4.2", "PyMuPDF>=1.28"]
+video = ["yt-dlp>=2026.10.21", "curl-cffi>=0.16.3", "qrcode>=8.2"]
+vector = ["fastembed==0.9.1", "onnxruntime==1.31.1", "numpy==2.5.4"]
+pet = ["Pillow>=12.3"]
+all = ["hakimi[qq,video,vector]"]
+
+[project.scripts]
+hakimi = "hakimi.__main__:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "hakimi.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hakimi = [
+    "persona/*.md", "persona/*.jsonl", "persona/*.txt", "persona/ops/*.txt",
+    "defaults/*.json",
+    "models/*.mjs",
+    "console/memory_console_static/*",
+]

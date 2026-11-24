@@ -1,0 +1,16 @@
+[Unit]
+Description=Hakimi independent Terra health check
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@ROOT@
+ExecStart=@VENV@/bin/python -m hakimi.ops.cloud_supervisor
+Environment=HAKIMI_ROOT=@ROOT@
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TZ=America/New_York
+Environment=XDG_RUNTIME_DIR=%t
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+UMask=0077
+TimeoutStartSec=240

@@ -1,0 +1,17 @@
+{
+  "checkpoint": "synthetic-1",
+  "items": [
+    {
+      "source_id": "synthetic-public-preference",
+      "revision": 1,
+      "scope": "self",
+      "kind": "preference",
+      "text": "合成测试资料：偏好简洁、有依据的表达。这不是从真实账号导出的记忆。",
+      "created_at": 1793500000,
+      "importance": 0.8,
+      "attribution": "inference",
+      "source_refs": ["qq:synthetic-public-note:1"],
+      "coverage": []
+    }
+  ]
+}

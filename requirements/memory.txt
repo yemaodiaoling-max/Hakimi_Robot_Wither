@@ -1,0 +1,9 @@
+# Optional local semantic memory dependencies.  The base bot deliberately does
+# not need these; FTS5 + sparse lexical retrieval remains available if missing.
+# Versions verified in the isolated VPS encoder venv (Python 3.14, CPU only).
+fastembed==0.9.1
+onnxruntime==1.31.1
+numpy==2.5.4
+
+# FastEmbed brings onnxruntime for CPU inference.  Do not install a CUDA extra on
+# the 2-core VPS unless the provider has been tested there.

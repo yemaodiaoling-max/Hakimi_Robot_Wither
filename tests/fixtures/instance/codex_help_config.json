@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "max_calls_per_hour": 6,
+  "max_calls_per_day": 18,
+  "max_session_calls_per_hour": 2,
+  "max_fault_calls_per_day": 6,
+  "max_complex_calls_per_hour": 4,
+  "max_complex_calls_per_day": 12,
+  "max_total_tokens_per_day": 200000,
+  "token_reservation": 12000,
+  "max_pending": 32,
+  "timeout_seconds": 70,
+  "wait_seconds": 50,
+  "min_call_interval_seconds": 15,
+  "cache_seconds": 900,
+  "fault_merge_seconds": 43200
+}

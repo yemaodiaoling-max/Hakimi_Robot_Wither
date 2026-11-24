@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "enabled": false,
+  "app_id": "000000",
+  "test_group_number": "100000000",
+  "allow_proactive": false,
+  "operation_mode": "test",
+  "auto_adapt_groups": true,
+  "allow_private_chat": true
+}

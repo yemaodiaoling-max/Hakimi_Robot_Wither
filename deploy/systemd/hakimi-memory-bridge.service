@@ -1,0 +1,13 @@
+[Unit]
+Description=Share digests between the video module and the common memory core
+
+[Service]
+Type=oneshot
+WorkingDirectory=@VIDEO@
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONPATH=@VIDEO@/src
+ExecStart=@VENV@/bin/python -m bili_companion.integrations.service --config @VIDEO@/deploy/bridge.json
+TimeoutStartSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

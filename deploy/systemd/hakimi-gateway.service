@@ -1,0 +1,20 @@
+[Unit]
+Description=Hakimi local model gateway (loopback HTTPS)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=@VENV@/bin/python -m hakimi.gateway serve
+Environment=HAKIMI_ROOT=@ROOT@
+Environment=HAKIMI_GATEWAY_DIR=@GATEWAY@
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

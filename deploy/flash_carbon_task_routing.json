@@ -1,0 +1,5 @@
+{
+  "mode": "dual",
+  "single_model": "gemini-4-hydrogen",
+  "dual_model": "gemini-4-carbon"
+}

@@ -1,0 +1,48 @@
+.vertex-budget {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0 18px 10px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(126, 200, 227, 0.28);
+  border-radius: 10px;
+  background: rgba(23, 39, 51, 0.72);
+  color: #d9eef5;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  position: static;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.vertex-budget[hidden] {
+  display: none !important;
+}
+
+.vertex-budget-main {
+  font-weight: 600;
+  color: #eaf7fb;
+}
+
+.vertex-budget-credits {
+  color: #a9c6d2;
+}
+
+.vertex-budget-link {
+  color: #8fd3ea;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.vertex-budget-link:hover,
+.vertex-budget-link:focus {
+  color: #c4ebf7;
+}
+
+@media (max-width: 720px) {
+  .vertex-budget {
+    margin: 0 10px 8px;
+    font-size: 0.8rem;
+  }
+}

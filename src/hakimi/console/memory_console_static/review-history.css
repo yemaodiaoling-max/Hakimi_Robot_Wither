@@ -1,0 +1,43 @@
+.review-page { overflow: auto; min-width: 340px; }
+.review-page .topbar { height: auto; min-height: 80px; flex-wrap: wrap; padding: 18px 32px; }
+.review-page .brand { min-width: 0; }
+.review-page .view-nav { margin-left: auto; }
+.review-page a.nav-button { text-decoration: none; display: inline-flex; align-items: center; }
+.review-main { max-width: 1440px; margin: 0 auto; padding: 42px 36px 30px; }
+.review-intro { display: flex; justify-content: space-between; gap: 30px; margin-bottom: 32px; align-items: end; }
+.review-eyebrow { color: #b6a3ed; font-size: 12px; letter-spacing: .08em; }
+.review-intro h1 { font-size: clamp(25px,3vw,36px); letter-spacing: -.03em; margin: 12px 0; font-weight: 650; }
+.review-intro p { margin: 0; color: var(--muted); line-height: 1.8; font-size: 14px; }
+.retention-note { text-align: right; color: var(--muted); font-size: 12px; line-height: 1.9; flex: 0 0 auto; }
+.retention-note strong { color: #b8dccc; font-weight: 500; }
+.review-surface { border: 1px solid var(--line); background: var(--panel); border-radius: 16px; overflow: hidden; }
+.review-tabs { display: flex; align-items: center; padding: 0 24px; gap: 24px; border-bottom: 1px solid var(--line-soft); }
+.review-tabs button { border: 0; border-radius: 0; background: none; padding: 19px 2px 17px; color: var(--muted); border-bottom: 2px solid transparent; font-size: 14px; }
+.review-tabs button.active { color: #ddd1ff; border-bottom-color: #b69cff; }
+.review-tabs #historyStatus { margin-left: auto; font-size: 11px; }
+.review-filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; padding: 24px 24px 18px; }
+.review-filters label { display: flex; flex-direction: column; gap: 8px; color: var(--muted); font-size: 11px; flex: 1 1 135px; }
+.review-filters input,.review-filters select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; width: 100%; height: 37px; padding: 8px 10px; font-size: 12px; min-width: 0; }
+.review-filters label:first-child { max-width: 175px; }
+.review-filters button { height: 37px; padding: 0 16px; }
+.review-summary { padding: 12px 24px; display: flex; gap: 20px; justify-content: space-between; font-size: 12px; border-top: 1px solid var(--line-soft); }
+.review-table-wrap { overflow: auto; }
+.review-table { width: 100%; border-collapse: collapse; text-align: left; table-layout: fixed; min-width: 940px; font-size: 12px; }
+.review-table th { font-weight: 500; color: var(--faint); padding: 13px 20px; background: rgba(255,255,255,.018); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.review-table th:first-child { width: 18%; }.review-table th:nth-child(2) { width: 20%; }.review-table th:nth-child(3),.review-table th:nth-child(4) { width: 16%; }
+.review-table td { padding: 21px 20px; vertical-align: top; border-bottom: 1px solid var(--line-soft); line-height: 1.7; overflow-wrap: anywhere; }
+.review-table tr:last-child td { border-bottom: 0; }
+.review-table tbody tr:hover { background: rgba(182,156,255,.025); }
+.review-sub { color: var(--muted); font-size: 11px; display: block; margin-top: 5px; }
+.review-source { display: inline-block; border-radius: 5px; color: #b8a5ee; background: rgba(182,156,255,.08); padding: 1px 6px; font-size: 10px; margin-top: 5px; }
+.review-revision { color: #e4bb79; margin-left: 6px; font-size: 10px; }
+.review-delta { display: block; font-variant-numeric: tabular-nums; margin-top: 4px; font-size: 12px; }
+.review-delta.positive { color: #90d9b7; }.review-delta.negative { color: #ed9e9e; }.review-delta.neutral { color: var(--faint); }
+.review-numbers { font-size: 15px; font-variant-numeric: tabular-nums; color: #e0e8f3; white-space: nowrap; }
+.review-arrow { color: #78869b; padding: 0 8px; font-size: 11px; }
+.review-reason { color: #c7d1df; margin: 0; white-space: pre-wrap; }
+.review-pager { border-top: 1px solid var(--line-soft); padding: 17px 24px; justify-content: end; gap: 24px; }
+.review-empty { padding: 70px 25px 80px; text-align: center; color: var(--muted); }.review-empty h2 { font-size: 16px; color: #cad4e1; font-weight: 500; }.review-empty p { font-size: 12px; }.empty-symbol { font-size: 40px; color: #71638e; }
+.review-footnote { font-size: 11px; color: var(--faint); line-height: 1.9; max-width: 1060px; margin: 22px 4px; }
+.review-page .banner { margin: 0 0 22px; }.review-page #tokenForm { display: grid; gap: 12px; }
+@media (max-width: 900px) { .review-main { padding: 28px 16px; }.review-page .topbar { padding: 16px; }.review-page .brand-sub { display: none; }.review-page .view-nav { order: 3; margin-left: 0; width: 100%; }.review-intro { display: block; }.retention-note { text-align: left; margin-top: 18px; }.review-filters { padding: 18px; }.review-summary { flex-wrap: wrap; } }

@@ -1,0 +1,21 @@
+[Unit]
+Description=Hakimi help
+After=network-online.target dbus.service
+StartLimitIntervalSec=300
+StartLimitBurst=8
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=@VENV@/bin/python -m hakimi.ops.cloud_service help
+Environment=HAKIMI_ROOT=@ROOT@
+Environment=TZ=America/New_York
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=20
+UMask=0077
+
+[Install]
+WantedBy=default.target

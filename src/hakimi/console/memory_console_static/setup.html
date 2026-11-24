@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>哈基米 · 设置</title>
+  <script defer src="/panel-shell.js"></script>
+  <link rel="stylesheet" href="/panel-shell.css">
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body>
+<main class="page setup-page" id="setup">
+  <header class="page-head">
+    <div>
+      <h1>设置</h1>
+      <p>选择要用的模块，填写模型 Key 和账号。所有密钥只保存在这台服务器上并加密存放，页面不会回显已保存的值。</p>
+    </div>
+    <span class="badge" id="saveState">读取中…</span>
+  </header>
+
+  <section class="card gate" id="tokenGate" hidden>
+    <h2 class="card-title">需要面板令牌</h2>
+    <p class="card-sub">在服务器上运行 <code class="mono">hakimi setup url</code>，用它打印的地址打开本页；或把令牌粘贴到下面。</p>
+    <form id="tokenForm" class="row">
+      <input id="tokenInput" type="password" autocomplete="off" placeholder="面板令牌" aria-label="面板令牌">
+      <button class="btn primary" type="submit">进入</button>
+    </form>
+  </section>
+
+  <div class="setup-layout" id="setupBody" hidden>
+    <nav class="steps" aria-label="设置分区">
+      <a href="#sec-modules">模块</a>
+      <a href="#sec-model">模型与 Key</a>
+      <a href="#sec-owner">主人</a>
+      <a href="#sec-persona">人设</a>
+      <a href="#sec-qq" data-module="qq">QQ 机器人</a>
+      <a href="#sec-video" data-module="video">B 站</a>
+      <a href="#sec-pet" data-module="pet">桌宠</a>
+    </nav>
+
+    <form id="setupForm" class="sections" novalidate>
+      <section class="card" id="sec-modules">
+        <h2 class="card-title">模块</h2>
+        <p class="card-sub">三个模块共用同一个记忆内核，可以任意组合；没启用的模块不会启动，也不会影响其它模块。</p>
+        <div class="module-grid" id="moduleGrid"></div>
+      </section>
+
+      <section class="card" id="sec-model">
+        <h2 class="card-title">模型与 Key</h2>
+        <p class="card-sub">所有模块都通过本机网关调用模型。默认使用 Google AI Studio 的 Gemini API；也可以填任何兼容 Gemini 协议的地址。</p>
+        <div class="grid">
+          <label class="field wide">
+            <span>API Key <em class="secret-flag" data-secret="model.api_key"></em></span>
+            <input type="password" name="model.api_key" autocomplete="off" spellcheck="false" placeholder="例如 AI Studio 的 Gemini API Key">
+            <small>在 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a> 创建。留空表示保持已保存的 Key。</small>
+          </label>
+          <label class="field">
+            <span>接口类型</span>
+            <select name="model.provider">
+              <option value="gemini">Google Gemini API（官方）</option>
+              <option value="gemini_compatible">Gemini 兼容地址（中转/自建）</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>接口地址</span>
+            <input name="model.base_url" spellcheck="false" placeholder="https://generativelanguage.googleapis.com">
+          </label>
+          <label class="field">
+            <span>鉴权方式</span>
+            <select name="model.auth">
+              <option value="x-goog-api-key">x-goog-api-key（官方）</option>
+              <option value="bearer">Authorization: Bearer</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>代理（可选）</span>
+            <input name="model.proxy" spellcheck="false" placeholder="http://127.0.0.1:7890">
+            <small>服务器无法直连 Google 时填写。</small>
+          </label>
+        </div>
+        <div class="row check-row">
+          <button class="btn" type="button" id="checkModel">检测 Key 并读取可用模型</button>
+          <span class="muted" id="checkModelResult" role="status"></span>
+        </div>
+        <datalist id="modelNames"></datalist>
+        <div class="grid">
+          <label class="field">
+            <span>主回复模型</span>
+            <input name="model.main_model" list="modelNames" spellcheck="false" required>
+          </label>
+          <label class="field">
+            <span>轻量模型</span>
+            <input name="model.light_model" list="modelNames" spellcheck="false">
+            <small>复盘、消息梳理、桌宠、视频选片。留空用主模型。</small>
+          </label>
+          <label class="field">
+            <span>强推理模型（可选）</span>
+            <input name="model.strong_model" list="modelNames" spellcheck="false">
+          </label>
+          <label class="field">
+            <span>视频观察模型</span>
+            <input name="model.video_model" list="modelNames" spellcheck="false">
+          </label>
+          <label class="field toggle wide">
+            <input type="checkbox" name="model.routing" value="dual">
+            <span>智能分流：日常闲聊用轻量模型，详细推导/考据/解题用强推理模型（需要填写强推理模型）</span>
+          </label>
+          <label class="field">
+            <span>每月花费上限（美元，可选）</span>
+            <input name="model.monthly_limit_usd" inputmode="decimal" placeholder="不填表示不设上限">
+            <small>按下面的单价估算；达到上限后改用备用模型或暂停。</small>
+          </label>
+          <div class="field">
+            <span>本月已用（估算）</span>
+            <output id="spent" class="big-number">—</output>
+          </div>
+        </div>
+        <details class="sub">
+          <summary>模型单价（用于估算花费）</summary>
+          <p class="muted">每百万 token 的美元价格，以服务商价目表为准。不填按 0 计。</p>
+          <div id="priceRows" class="price-rows"></div>
+        </details>
+        <details class="sub">
+          <summary>备用模型（DeepSeek，可选）</summary>
+          <p class="muted">主模型超时或不可用时接管回复。需要服务器上已安装 <code class="mono">dsh</code> 命令行（见 docs/modules.md）。<span id="dshState"></span></p>
+          <div class="grid">
+            <label class="field toggle wide"><input type="checkbox" name="fallback.enabled"><span>启用备用模型</span></label>
+            <label class="field">
+              <span>DeepSeek API Key <em class="secret-flag" data-secret="fallback.api_key"></em></span>
+              <input type="password" name="fallback.api_key" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field"><span>接口地址</span><input name="fallback.base_url" spellcheck="false"></label>
+          </div>
+        </details>
+      </section>
+
+      <section class="card" id="sec-owner">
+        <h2 class="card-title">主人</h2>
+        <p class="card-sub">“主人”的吩咐会被优先办妥，聊天时语气更亲近；桌宠的经历也记在主人的私聊里。</p>
+        <div class="grid">
+          <label class="field"><span>机器人名字</span><input name="bot.name" maxlength="40"></label>
+          <label class="field"><span>主人称呼</span><input name="owner.name" maxlength="40" placeholder="例如：小明"></label>
+          <label class="field wide">
+            <span>主人的 ID（逗号分隔）</span>
+            <input name="owner.ids" spellcheck="false" placeholder="QQ 官方通道里你的用户 ID，以及旧 QQ 号">
+            <small>不知道 ID：先启用 QQ 机器人，在测试群发一句话，到「消息日志」里查看你的用户编号。</small>
+          </label>
+          <label class="field wide">
+            <span>主人的其它昵称（逗号分隔，可选）</span>
+            <input name="owner.aliases" placeholder="群名片等">
+            <small>只用于识别主人，请填写不容易被别人冒用的昵称。</small>
+          </label>
+          <label class="field wide">
+            <span>群里其它机器人的 QQ 号（逗号分隔，可选）</span>
+            <input name="owner.known_bot_ids" spellcheck="false">
+          </label>
+        </div>
+      </section>
+
+      <section class="card" id="sec-persona">
+        <h2 class="card-title">人设</h2>
+        <p class="card-sub">性格、说话方式、桌宠和 B 站的口吻都是普通文本。改完点「保存这个人设」即可（单独保存，不需要点底部按钮）；「恢复默认」会删掉你的版本。保存后重启对应服务生效。</p>
+        <div class="persona-editor">
+          <div class="persona-list" id="personaList" role="tablist" aria-label="人设文件"></div>
+          <div class="persona-pane">
+            <div class="row persona-head">
+              <strong id="personaLabel">选择左侧的一个人设</strong>
+              <span class="badge" id="personaState" hidden></span>
+            </div>
+            <p class="muted" id="personaSummary"></p>
+            <textarea id="personaText" spellcheck="false" aria-label="人设内容" disabled></textarea>
+            <div class="row">
+              <button type="button" class="btn primary" id="personaSave" disabled>保存这个人设</button>
+              <button type="button" class="btn ghost" id="personaReset" disabled>恢复默认</button>
+              <span class="muted" id="personaResult" role="status"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card module-section" id="sec-qq" data-module="qq">
+        <h2 class="card-title">QQ 机器人 <span class="badge plain module-off-tag">未启用</span></h2>
+        <p class="card-sub">在 <a href="https://q.qq.com" target="_blank" rel="noopener noreferrer">QQ 开放平台</a> 创建机器人，在「开发设置」里获取 AppID 和 AppSecret，并把测试群加入沙箱。</p>
+        <div class="grid">
+          <label class="field"><span>AppID</span><input name="qq.app_id" inputmode="numeric" spellcheck="false"></label>
+          <label class="field">
+            <span>AppSecret <em class="secret-flag" data-secret="qq.app_secret"></em></span>
+            <input type="password" name="qq.app_secret" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field"><span>测试群号</span><input name="qq.test_group" inputmode="numeric" spellcheck="false"></label>
+          <label class="field">
+            <span>运行模式</span>
+            <select name="qq.operation_mode">
+              <option value="test">测试（只在测试群）</option>
+              <option value="normal">正式（机器人已上线的所有群）</option>
+            </select>
+          </label>
+          <label class="field toggle"><input type="checkbox" name="qq.allow_private_chat"><span>允许私聊</span></label>
+          <label class="field toggle"><input type="checkbox" name="qq.allow_proactive"><span>允许主动发言（需要平台权限）</span></label>
+          <label class="field toggle"><input type="checkbox" name="qq.auto_adapt_groups"><span>自动接入新群</span></label>
+        </div>
+      </section>
+
+      <section class="card module-section" id="sec-video" data-module="video">
+        <h2 class="card-title">B 站 <span class="badge plain module-off-tag">未启用</span></h2>
+        <p class="card-sub">视频机器人用这个账号看推荐视频和直播；QQ 机器人看 B 站链接时也会用它。建议使用小号。</p>
+        <div class="login-box">
+          <div class="qr" id="qrBox" aria-live="polite"><span class="muted">扫码登录最省事</span></div>
+          <div class="login-actions">
+            <button class="btn" type="button" id="qrStart">获取登录二维码</button>
+            <p class="muted" id="qrState" role="status">用 B 站 App 扫码，确认后自动保存。</p>
+            <p class="muted">已登录：<em class="secret-flag" data-secret="video.sessdata"></em></p>
+          </div>
+        </div>
+        <details class="sub">
+          <summary>手动填写 Cookie</summary>
+          <p class="muted">浏览器登录 bilibili.com → F12 → 应用/存储 → Cookie，复制以下三项的值。</p>
+          <div class="grid">
+            <label class="field"><span>SESSDATA</span><input type="password" name="video.sessdata" autocomplete="off" spellcheck="false"></label>
+            <label class="field"><span>DedeUserID</span><input name="video.dedeuserid" autocomplete="off" spellcheck="false" inputmode="numeric"></label>
+            <label class="field"><span>bili_jct（发弹幕/评论才需要）</span><input type="password" name="video.bili_jct" autocomplete="off" spellcheck="false"></label>
+          </div>
+        </details>
+        <div class="grid">
+          <label class="field">
+            <span>优先直播间号（可选）</span>
+            <input name="video.priority_room" inputmode="numeric" placeholder="开播时优先去看；留空只看推荐视频">
+          </label>
+          <label class="field"><span>视频月预算（美元，≤10）</span><input name="video.monthly_usd" inputmode="decimal"></label>
+          <label class="field"><span>视频日预算（美元，≤1）</span><input name="video.daily_usd" inputmode="decimal"></label>
+          <label class="field toggle"><input type="checkbox" name="video.send_danmaku"><span>在优先直播间发弹幕</span></label>
+          <label class="field toggle"><input type="checkbox" name="video.comments"><span>允许在视频下发评论（每天最多 2 条）</span></label>
+        </div>
+      </section>
+
+      <section class="card module-section" id="sec-pet" data-module="pet">
+        <h2 class="card-title">桌宠 <span class="badge plain module-off-tag">未启用</span></h2>
+        <p class="card-sub">桌宠运行在你的 Windows 电脑上。机器人装在同一台电脑选“本机”；装在服务器上选“SSH”，桌宠会通过 SSH 连接服务器。</p>
+        <div class="grid">
+          <label class="field">
+            <span>连接方式</span>
+            <select name="pet.connection">
+              <option value="local">本机（同一台电脑）</option>
+              <option value="ssh">SSH 连接服务器</option>
+            </select>
+          </label>
+          <label class="field ssh-only"><span>服务器地址</span><input name="pet.ssh_host" spellcheck="false"></label>
+          <label class="field ssh-only"><span>SSH 端口</span><input name="pet.ssh_port" inputmode="numeric"></label>
+          <label class="field ssh-only"><span>SSH 用户名</span><input name="pet.ssh_user" spellcheck="false"></label>
+          <label class="field ssh-only wide"><span>私钥路径（Windows 上）</span><input name="pet.ssh_identity" spellcheck="false" placeholder="%USERPROFILE%\.ssh\id_ed25519"></label>
+          <label class="field ssh-only wide"><span>known_hosts 路径（可选）</span><input name="pet.ssh_known_hosts" spellcheck="false"></label>
+          <label class="field ssh-only"><span>服务器上的 Python</span><input name="pet.remote_python" spellcheck="false"></label>
+          <label class="field ssh-only"><span>服务器上的代码目录</span><input name="pet.remote_app" spellcheck="false"></label>
+        </div>
+        <div class="field wide">
+          <span>把下面内容保存为桌宠目录里的 <code class="mono">pet_connection.json</code></span>
+          <pre class="mono code" id="petConnection">{}</pre>
+          <div class="row"><button class="btn" type="button" id="copyPet">复制</button><span class="muted" id="copyState"></span></div>
+        </div>
+      </section>
+
+      <section class="card" id="sec-result" hidden>
+        <h2 class="card-title">应用结果</h2>
+        <ul class="report" id="report"></ul>
+        <div class="notice" id="restartNote"></div>
+      </section>
+
+      <div class="savebar">
+        <p class="error" id="formError" role="alert"></p>
+        <label class="toggle inline" id="restartToggle"><input type="checkbox" id="restart"><span>保存后重启相关服务</span></label>
+        <button class="btn primary" type="submit" id="saveButton">保存并应用</button>
+      </div>
+    </form>
+  </div>
+</main>
+<script src="/setup.js"></script>
+</body>
+</html>

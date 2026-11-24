@@ -1,0 +1,12 @@
+{
+  "state_dir": "/path/to/bili_companion/state/bridge",
+  "qq_identity": "hakimi-qq",
+  "bilibili_identity": "hakimi-bilibili",
+  "qq_database": "/path/to/qq_runtime/state/memory.sqlite3",
+  "bilibili_database": "/path/to/bili_companion/state/native_watch.sqlite3",
+  "watcher_database": "/path/to/bili_companion/state/watch/watcher.sqlite3",
+  "bilibili_account_id": "hakimi-bilibili",
+  "owner_private_session": "private:<owner_qq_id>",
+  "autobiography_snapshot": "/path/to/qq_runtime/state/bili_autobiography.json",
+  "presence_snapshot": "/path/to/qq_runtime/state/hakimi_presence.json"
+}

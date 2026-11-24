@@ -1,0 +1,118 @@
+/* Shared top navigation, page frame, controls and keyboard focus. */
+:root {
+  color-scheme: dark;
+  --shell-bg: #0d1117;
+  --shell-surface: rgba(13, 17, 23, .82);
+  --shell-line: #222d39;
+  --shell-text: #e7edf5;
+  --shell-muted: #9aa8ba;
+  --shell-accent: #f0b35a;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+  background: var(--shell-bg);
+  color: var(--shell-text);
+  overflow: auto;
+}
+body {
+  margin: 0;
+  overflow: auto;
+  background:
+    radial-gradient(1100px 600px at 78% -10%, rgba(125, 211, 252, .06), transparent 62%),
+    radial-gradient(900px 500px at 12% 110%, rgba(240, 179, 90, .05), transparent 60%),
+    var(--shell-bg);
+  background-attachment: fixed;
+  color: var(--shell-text);
+  font-family: inherit;
+}
+.panel-shell {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 58px;
+  padding: 0 20px;
+  box-sizing: border-box;
+  background: var(--shell-surface);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid var(--shell-line);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.panel-shell::-webkit-scrollbar { display: none; }
+.panel-shell .shell-brand {
+  display: flex; align-items: center; gap: 10px;
+  margin-right: 18px; flex: 0 0 auto;
+  color: var(--shell-text); text-decoration: none; font-weight: 700; font-size: 15px; letter-spacing: .02em;
+}
+.panel-shell .shell-mark {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 9px;
+  background: linear-gradient(140deg, #f0b35a, #e07b39);
+  color: #1d1406; font-size: 15px; font-weight: 800;
+  box-shadow: 0 4px 14px rgba(240, 179, 90, .25);
+}
+.panel-shell a.shell-link {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--shell-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color .15s, background .15s;
+}
+.panel-shell a.shell-link:hover { color: var(--shell-text); background: rgba(255, 255, 255, .05); }
+.panel-shell a.shell-link[aria-current="page"] { color: var(--shell-text); font-weight: 600; }
+.panel-shell a.shell-link[aria-current="page"]::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: -11px; height: 2px;
+  border-radius: 2px; background: var(--shell-accent);
+}
+.panel-shell .shell-spacer { flex: 1 1 auto; min-width: 12px; }
+.panel-shell a.shell-setup {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 999px;
+  border: 1px solid rgba(240, 179, 90, .35);
+  color: var(--shell-accent); text-decoration: none; white-space: nowrap; font-weight: 600;
+  background: rgba(240, 179, 90, .08);
+}
+.panel-shell a.shell-setup:hover { background: rgba(240, 179, 90, .16); }
+.panel-shell a.shell-setup[aria-current="page"] { background: var(--shell-accent); color: #1d1406; }
+.panel-shell a.shell-setup .shell-dot { width: 7px; height: 7px; border-radius: 50%; background: #f87171; }
+.panel-shell a.shell-setup:not(.needs-setup) .shell-dot { display: none; }
+
+:focus-visible { outline: 2px solid var(--shell-accent); outline-offset: 3px; }
+.panel-context-links { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+.panel-context-links a { color: #7dd3fc; }
+.panel-empty {
+  padding: 30px 16px;
+  border: 1px dashed #3a4a5c;
+  border-radius: 12px;
+  color: var(--shell-muted);
+}
+body:has(.panel-shell) #app { min-height: calc(100vh - var(--panel-shell-height, 58px)); }
+body > main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; box-sizing: border-box; }
+body input, body select, body button, body textarea {
+  font: inherit;
+  color: inherit;
+  background-color: #1b232d;
+  border-color: #2b3745;
+  border-radius: 8px;
+}
+body input, body select { min-height: 38px; box-sizing: border-box; }
+body button { cursor: pointer; }
+body button:disabled { cursor: default; opacity: .55; }
+/* Navigation is provided once by the shared shell; keep local view controls. */
+.topbar .view-nav a, .topbar .top-actions a,
+body > main > a[href="/"], body > main > header > a[href="/"] { display: none; }
+@media (max-width: 640px) {
+  .panel-shell { padding: 0 10px; }
+  .panel-shell .shell-brand span:last-child { display: none; }
+  body > main { padding: 20px 12px; }
+  .detail-actions { flex-wrap: wrap; }
+}
+body:has(#graphSvg) #app { height: calc(100dvh - var(--panel-shell-height, 58px)); }

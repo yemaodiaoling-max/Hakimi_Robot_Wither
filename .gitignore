@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Instance data: chats, memory, diaries, credentials. Never commit these.
+state/
+official_test_runtime/
+stickers/
+maintenance/
+*.sqlite3
+*.sqlite3-*
+*.dpapi
+*.fernet
+*.key
+*.pem
+*.token
+*.tmp
+hakimi_settings.json
+owner.json
+modules.json
+config.json
+group_profiles.json
+official_test_config.json
+!src/hakimi/defaults/*.json
+!tests/fixtures/**/*.json
+
+# Module-local private files
+bili_companion/state/
+bili_companion/deploy/watcher.json
+bili_companion/deploy/bridge.json
+desktop_pet/pet_connection.json
