@@ -11,6 +11,7 @@ from hakimi.models.fallback_style import select_samples, sticker_menu, sticker_s
 from hakimi.prompt.prompt_compaction import lossless_context
 from hakimi.prompt.prompt_context import build_context
 from hakimi.tools import bilibili_video
+from hakimi.tools.drawing_intent import INSTRUCTION as DRAW_INSTRUCTION, TOOL as DRAW_TOOL, offered as offer_drawing
 
 
 BASE_DIR = paths.base()
@@ -49,6 +50,8 @@ def fallback_prompt(payload, base=BASE_DIR, *, allow_consult=False, consultation
         context['voice_tool']='voice.speak(text≤80字)'
     if offer_hum(payload,base):
         context['hum_tool']='voice.hum()：发送原创短哼唱。'
+    if offer_drawing(payload, base):
+        context['draw_tool'] = f'{DRAW_TOOL}(brief)：{DRAW_INSTRUCTION}'
     context["core_identity"] = persona.text("dsh_core_identity.txt")
     context["dsh_only_recorded_gemini_style"] = select_samples(
         context["session_key"], snapshot['original_messages'], base)

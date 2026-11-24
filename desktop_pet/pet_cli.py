@@ -28,13 +28,13 @@ RESPONSE_FILE = STATE_DIR / "pet_turn_response.json"
 from desktop_pet.pet_handoff import HANDOFF_FILE, write_handoff_summary
 
 _KNOWN_PUBLIC_GROUP_KEYWORDS = (
-    "主人子协会", "万有引力", "摸鱼部", "考据", "高数", "高等数学", "原神",
+    *__import__("hakimi.core.owner", fromlist=["x"]).local_terms("public_group_keywords"), "万有引力", "摸鱼部", "考据", "高数", "高等数学", "原神",
     "学习群", "测试群", "协会", "俱乐部", "交流群", "讨论群", "水群",
 )
 _PRIVATE_CHAT_TEXT_RE = re.compile(
     r"私聊|单聊|小窗|私信|微信聊|"
     r"(?:找|跟|和|与)[^，。|；！？\s]{1,12}(?:私聊|单聊|小窗|聊社科|聊哲学|聊起|聊到|私下聊|单独聊)|"
-    r"抖落.*私聊"
+    r"抖落.*私聊" + __import__("hakimi.core.owner", fromlist=["x"]).phrase_alternation("privacy_phrases")
 )
 
 
@@ -298,7 +298,7 @@ def cmd_mem_remember(args: argparse.Namespace) -> int:
             "kind": args.kind,
             "key": args.key or "桌面陪伴记录",
             "evidence": args.evidence or "主人与桌宠哈基米对话",
-            "topics": args.topics or "桌宠,主人",
+            "topics": args.topics or "桌宠," + __import__("hakimi.core.owner", fromlist=["x"]).OWNER_NAME,
         },
     })
     print(json.dumps(res, ensure_ascii=False, indent=2))
@@ -373,7 +373,7 @@ def main() -> int:
     p_mrem.add_argument("--kind", required=True, choices=["person", "preference", "lore", "episode", "reflection", "commitment"], help="Memory kind")
     p_mrem.add_argument("--key", default="桌面陪伴记录", help="Short topic/item key")
     p_mrem.add_argument("--evidence", default="主人与桌宠哈基米对话", help="Evidence quote or note")
-    p_mrem.add_argument("--topics", default="桌宠,主人", help="Comma-separated topics")
+    p_mrem.add_argument("--topics", default="桌宠," + __import__("hakimi.core.owner", fromlist=["x"]).OWNER_NAME, help="Comma-separated topics")
     p_mrem.set_defaults(func=cmd_mem_remember)
 
     # diary-read

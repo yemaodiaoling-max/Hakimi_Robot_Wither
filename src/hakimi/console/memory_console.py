@@ -1,8 +1,8 @@
 """Loopback-only, token-protected real-time memory and social relations console.
 
-The HTTP service is intentionally small and read-only.  It reads the live SQLite
-database with short timeouts and bounded queries; it does not rebuild the whole
-graph on every request.  Static files contain no data.  Start it explicitly:
+The HTTP service reads the live SQLite database with short timeouts and bounded
+queries. Settings and identity changes require authenticated same-origin requests.
+Static files contain no data. Start it explicitly:
 
     python memory_console.py --base . --port 18768 --token-file state/console.token
 """
@@ -40,6 +40,7 @@ from hakimi.console.payloads_memory import groups_payload, memories_payload, mem
 from hakimi.console.payloads_social import _assessments_for, _evidence_details, _graph_metric, _selected_score, _staleness, graph_payload, people_payload, person_payload, relation_payload  # noqa: F401 (re-export)
 from hakimi.console.payloads_review_history import review_history_payload
 from hakimi.console.payloads_identity import identity_apply_payload, identity_catalog_payload, identity_links_payload, identity_members_payload, identity_memory_payload, identity_preview_payload  # noqa: F401 (re-export)
+from hakimi.tools import drawing_accounting, drawing_settings
 
 VERSION = "6.0"
 DEFAULT_PORT = 18768
@@ -51,6 +52,9 @@ STATIC_FILES = {
     "/activity.html": ("activity.html", "text/html; charset=utf-8"),
     "/activity.css": ("activity.css", "text/css; charset=utf-8"),
     "/activity.js": ("activity.js", "application/javascript; charset=utf-8"),
+    "/drawing.html": ("drawing.html", "text/html; charset=utf-8"),
+    "/drawing.js": ("drawing.js", "text/javascript; charset=utf-8"),
+    "/drawing.css": ("drawing.css", "text/css; charset=utf-8"),
     "/messages.html": ("messages.html", "text/html; charset=utf-8"),
     "/messages.js": ("messages.js", "application/javascript"),
     "/messages.css": ("messages.css", "text/css"),
@@ -72,7 +76,7 @@ STATIC_FILES = {
     "/setup.js": ("setup.js", "text/javascript; charset=utf-8"),
     "/theme.css": ("theme.css", "text/css; charset=utf-8"),
 }
-MAX_IDENTITY_BODY = 32 * 1024
+MAX_JSON_BODY = 32 * 1024
 SECURITY_HEADERS = {
     "Content-Security-Policy": ("default-src 'none'; script-src 'self'; style-src 'self'; "
                                 "img-src 'self' data:; connect-src 'self'; base-uri 'none'; "
@@ -83,6 +87,15 @@ SECURITY_HEADERS = {
     "Cross-Origin-Resource-Policy": "same-origin",
     "Cache-Control": "no-store",
 }
+
+
+def _with_drawing_quota(base, settings):
+    try:
+        quota = drawing_accounting.quota_status(base)
+    except Exception:
+        # An unavailable quota snapshot must not block provider settings.
+        quota = None
+    return {**settings, "quota": quota}
 
 
 class ConsoleServer(ThreadingHTTPServer):
@@ -182,7 +195,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             length = int(length_header)
         except (TypeError, ValueError):
             raise ApiError(400, "invalid_content_length", "Content-Length格式无效")
-        if length < 0 or length > MAX_IDENTITY_BODY:
+        if length < 0 or length > MAX_JSON_BODY:
             raise ApiError(413, "body_too_large", "写请求正文不能超过32KB")
         body = self.rfile.read(length)
         if len(body) != length:
@@ -278,12 +291,16 @@ class ConsoleHandler(BaseHTTPRequestHandler):
                 payload = review_history_payload(self.server.base, values)
             elif path == "/api/vertex-budget":
                 payload = vertex_budget_payload(self.server.base)
+            elif path == "/api/drawing":
+                payload = _with_drawing_quota(self.server.base, drawing_settings.public_settings(self.server.base))
             else:
                 self._error(404, "not_found", "接口不存在")
                 return
             self._json({"ok": True, "data": payload})
         except ApiError as exc:
             self._error(exc.status, exc.code, exc.message)
+        except drawing_settings.DrawingError as exc:
+            self._error(503, exc.code, str(exc))
         except (BrokenPipeError, ConnectionResetError):
             return
         except sqlite3.Error:
@@ -304,7 +321,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             path = urlsplit(self.path).path
-            if path not in {"/api/identity/preview", "/api/identity/apply", "/api/setup",
+            if path not in {"/api/identity/preview", "/api/identity/apply", "/api/drawing", "/api/setup",
                             "/api/setup/check", "/api/setup/bilibili-login", "/api/setup/persona"}:
                 self._method_not_allowed()
                 return
@@ -316,6 +333,8 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             if path.startswith("/api/setup"):
                 from hakimi.setup import panel_api
                 payload = panel_api.setup_post(path, data)
+            elif path == "/api/drawing":
+                payload = _with_drawing_quota(self.server.base, drawing_settings.save_settings(self.server.base, data))
             elif path == "/api/identity/preview":
                 payload = identity_preview_payload(self.server.base, data)
             else:
@@ -325,6 +344,9 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             self._error(exc.status, exc.code, exc.message)
         except identity_links.IdentityError as exc:
             self._error(exc.status, exc.code, exc.message)
+        except drawing_settings.DrawingError as exc:
+            status = 503 if exc.code in {"drawing_settings_unreadable", "drawing_settings_write"} else 400
+            self._error(status, exc.code, str(exc))
         except (BrokenPipeError, ConnectionResetError):
             return
         except sqlite3.Error:
@@ -345,7 +367,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
 
     def _method_not_allowed(self):
         body = json.dumps({"ok": False, "error": {"code": "method_not_allowed",
-                                                  "message": "只读接口仅支持GET；身份匹配写操作仅支持POST /api/identity/preview和/api/identity/apply"}},
+                                                  "message": "该接口不支持此请求方式"}},
                           ensure_ascii=False).encode()
         self.send_response(405)
         self.send_header("Allow", "GET, POST")
@@ -371,7 +393,7 @@ def create_server(base, *, port=DEFAULT_PORT, token_file=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="哈基米实时记忆与关系面板（仅本机只读）")
+    parser = argparse.ArgumentParser(description="哈基米实时记忆与关系面板（仅限本机）")
     parser.add_argument("--base", default=str(paths.base()))
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--token-file", default="")

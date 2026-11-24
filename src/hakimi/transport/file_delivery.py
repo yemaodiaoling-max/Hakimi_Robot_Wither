@@ -89,7 +89,7 @@ def menu(session, base, limit=16):
     entries = []
     with os.scandir(root) as scan:
         for entry in scan:
-            if entry.name.startswith('_math_render_'):continue
+            if entry.name.startswith(('_math_render_', '_drawing_')):continue
             try:entries.append((entry, entry.stat()))
             except OSError:continue
     rows = []
@@ -131,6 +131,8 @@ def stage(specs, payload, base):
     root = directory(session, base)
     generated = []
     for item in checked:
+        if item['name'].startswith('_drawing_'):
+            raise ValueError('绘图只随原请求发送')
         content = transcript(payload, item.get("message_id")) if item.get("export") else item.get("content")
         if content is not None:
             generated.append((root/item["name"], content.encode("utf-8")))

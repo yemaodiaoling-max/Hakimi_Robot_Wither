@@ -1237,7 +1237,7 @@ class HakimiDesktopPet:
         if hasattr(self, "live_server"):
             self.live_server.update_state(anim_mode="thinking")
         if mode == "peek":
-            self.show_speech_bubbles(["盯——让我看看主人在屏幕前鼓捣什么..."], duration_ms=8000)
+            self.show_speech_bubbles(["盯——让我看看" + __import__("hakimi.core.owner", fromlist=["x"]).OWNER_SHORT + "在屏幕前鼓捣什么..."], duration_ms=8000)
         elif audio_b64:
             self.show_speech_bubbles(["正在听语音想回应中..."], duration_ms=12000)
         else:

@@ -457,6 +457,7 @@ def _cmd_call(args):
     import io
     from types import SimpleNamespace
     from hakimi.prompt.tool_catalog import BY_NAME, describe
+    from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL, offered as offer_drawing
     name = args.call_name
     if name not in BY_NAME:
         raise ToolError("未知工具名")
@@ -480,6 +481,11 @@ def _cmd_call(args):
         from hakimi.voice.tts import speak
         coordinator=TurnCoordinator(BASE_DIR);claim=coordinator.snapshot();claim['token']=args.turn
         print(json.dumps(speak(BASE_DIR,claim,coordinator,'gemini',data.get('text'),hum=name=='voice.hum'),ensure_ascii=False));return
+    if name == DRAW_TOOL:
+        from hakimi.tools.drawing_delivery import draw
+        result = draw(BASE_DIR, TurnCoordinator(BASE_DIR), args.turn, context.get('provider'), data)
+        print(json.dumps(result, ensure_ascii=False))
+        return
     if name == 'video.watch_attachment':
         from hakimi.tools.qq_video import watch
         coordinator = TurnCoordinator(BASE_DIR)
@@ -520,7 +526,9 @@ def _cmd_call(args):
         return
     if name == "tools.list":
         try:
-            output = describe(data.get("tool_name"))
+            state = TurnCoordinator(BASE_DIR).snapshot()
+            include_drawing = state.get('owner_token') == args.turn and offer_drawing(state['payload'], BASE_DIR)
+            output = describe(data.get("tool_name"), include_drawing=include_drawing)
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
     elif name in {"web.search", "web.read","web.sources"}:

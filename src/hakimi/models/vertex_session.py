@@ -299,6 +299,7 @@ class VertexSession:
 
     def _tool(self, name, arguments, claim, timeout):
         from hakimi.prompt.tool_catalog import BY_NAME
+        from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL, offered as offer_drawing
         if name == 'members.mention':
             from hakimi.transport.member_mentions import mention, mention_status
             from hakimi.bridge.turn_coordinator import TurnCoordinator
@@ -309,9 +310,13 @@ class VertexSession:
         if name == 'tools.list':
             from hakimi.prompt.tool_catalog import describe
             try:
-                return describe(arguments.get('tool_name'))
+                return describe(arguments.get('tool_name'), include_drawing=offer_drawing(claim['payload'], self.cwd))
             except ValueError:
                 return {'error': 'unknown_tool'}
+        if name == DRAW_TOOL:
+            from hakimi.bridge.turn_coordinator import TurnCoordinator
+            from hakimi.tools.drawing_delivery import draw
+            return draw(self.cwd, TurnCoordinator(self.cwd), claim['token'], 'gemini', arguments, timeout=timeout)
         if name in {'web.search', 'web.read','web.sources'}:
             from hakimi.models.web_access import run
             try:
@@ -401,8 +406,10 @@ class VertexSession:
         skipped = False
         review = isinstance(claim['payload'].get('internal_review'), dict)
         from hakimi.prompt.tool_selection import select_names
+        from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL
         all_names = {row['name'] for row in declarations()}
         active_names = select_names(claim['payload'], all_names, self.cwd)
+        available_names = all_names if DRAW_TOOL in active_names else all_names - {DRAW_TOOL}
         from hakimi.models.memory_retrieval import MemoryRetrieval
         retrieval = MemoryRetrieval()
         def remaining():
@@ -533,7 +540,9 @@ class VertexSession:
                         raise RuntimeError('vertex_turn_ownership_lost')
                     call_args = dict(call.get('args', {}))
                     try:
-                        if progress and call['name'] not in progress.delivery and (progress.calls >= 18 or progress.closing):
+                        if call['name'] == DRAW_TOOL and DRAW_TOOL not in available_names:
+                            output = {'error': 'drawing_not_requested'}
+                        elif progress and call['name'] not in progress.delivery and (progress.calls >= 18 or progress.closing):
                             output = {'error': 'research_complete', 'message': '请用已取得的结果作答。'}
                         else:
                             if progress:
@@ -559,7 +568,7 @@ class VertexSession:
                     ok = not output.get('error') and output.get('ok', True)
                     if call['name'] == 'tools.list' and ok:
                         requested = call.get('args', {}).get('tool_name')
-                        active_names.update({requested} if requested in all_names else all_names if not requested else set())
+                        active_names.update({requested} if requested in available_names else available_names if not requested else set())
                     if call['name'] == 'members.mention':
                         if ok and output.get('sent'):
                             submitted = True
@@ -570,6 +579,19 @@ class VertexSession:
                             break
                         from hakimi.voice.tts import failed_voice_reply
                         fallback = failed_voice_reply(output, call_args.get('text'))
+                        if fallback:
+                            from hakimi.bridge.reply_format import text_bubbles
+                            receipt = coordinator.submit_reply(claim['token'], text_bubbles(fallback), 'gemini')
+                            if not receipt.get('accepted'):
+                                raise RuntimeError('vertex_reply_submission_failed')
+                            submitted = True
+                            break
+                    elif call['name'] == DRAW_TOOL:
+                        if ok:
+                            submitted = True
+                            break
+                        from hakimi.tools.drawing_delivery import failure_text
+                        fallback = failure_text(output)
                         if fallback:
                             from hakimi.bridge.reply_format import text_bubbles
                             receipt = coordinator.submit_reply(claim['token'], text_bubbles(fallback), 'gemini')

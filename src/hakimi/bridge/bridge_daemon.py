@@ -475,8 +475,9 @@ class DynamicHakimiEngine:
         lurk_cfg = cfg.get("lurker_schedule", {})
         is_at = direct_attention(event, cfg)
 
-        # 防恶意刷屏骚扰：对持续无意义刷屏 @ 的群友不触发即时唤醒
-        if user_id in ("858491084",):
+        # 防恶意刷屏骚扰：对持续无意义刷屏 @ 的群友不触发即时唤醒（owner.json: local.no_instant_wake_ids）
+        from hakimi.core.owner import local_terms
+        if user_id in local_terms("no_instant_wake_ids"):
             return False, reasons, clean_text
 
         if lurk_cfg.get("instant_wake_on_at_or_private", True):
@@ -1765,6 +1766,12 @@ async def send_via_onebot(session_key: str, text: str, timeout: float = 12) -> d
     if not ACTIVE_WS_CLIENTS:
         return {"status": "offline"}
 
+    if text.startswith('[CQ:file,name=_drawing_'):
+        from hakimi.tools.drawing_delivery import onebot_image
+        try:
+            text = onebot_image(BASE_DIR, session_key, text)
+        except (OSError, ValueError):
+            return {'status': 'file_error'}
     kind, target_id = session_key.split(":", 1)
     echo = "agy_" + uuid.uuid4().hex
     payload = {

@@ -34,3 +34,10 @@ bili_companion/state/
 bili_companion/deploy/watcher.json
 bili_companion/deploy/bridge.json
 desktop_pet/pet_connection.json
+
+# private deployment only (never in git)
+official_test_runtime/
+state/
+stickers/
+maintenance/
+build/

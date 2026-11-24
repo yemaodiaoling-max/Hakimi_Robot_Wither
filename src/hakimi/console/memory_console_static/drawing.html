@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>哈基米 · 绘图设置</title>
+  <link rel="stylesheet" href="/panel-shell.css">
+  <link rel="stylesheet" href="/drawing.css">
+  <script defer src="/panel-shell.js"></script>
+  <script defer src="/drawing.js"></script>
+</head>
+<body>
+<main class="drawing-page">
+  <header class="drawing-header">
+    <h1>绘图设置</h1>
+    <p>为 QQ 绘图配置独立的 Gemini 图像 API。</p>
+  </header>
+  <form id="drawing-form" class="drawing-card" autocomplete="off">
+    <fieldset id="drawing-fields" disabled>
+      <legend>绘图 API</legend>
+      <div class="drawing-field">
+        <label for="drawing-endpoint">API 站点</label>
+        <input id="drawing-endpoint" type="url" placeholder="https://generativelanguage.googleapis.com/v1beta" aria-describedby="drawing-endpoint-help" required maxlength="2048" spellcheck="false">
+        <p id="drawing-endpoint-help">填写 HTTPS API 基础地址或完整的 Gemini generateContent 接口地址。</p>
+      </div>
+      <div class="drawing-field">
+        <label for="drawing-model">绘图模型</label>
+        <input id="drawing-model" type="text" placeholder="gemini-2.5-flash-image" aria-describedby="drawing-model-help" required maxlength="135" spellcheck="false">
+        <p id="drawing-model-help">填写该站点提供的图像生成模型标识。</p>
+      </div>
+      <div class="drawing-field">
+        <label for="drawing-key">API Key</label>
+        <input id="drawing-key" type="password" autocomplete="new-password" aria-describedby="drawing-key-help" maxlength="2048" spellcheck="false">
+        <p id="drawing-key-help">正在读取密钥状态…</p>
+      </div>
+      <details class="drawing-budget">
+        <summary>绘图预算（可选）</summary>
+        <p id="drawing-budget-help">启用日或月上限时，请填写每次预留金额。待结算的请求会继续占用预留额度。留空表示不设对应金额。</p>
+        <div class="drawing-budget-fields">
+          <div class="drawing-field">
+            <label for="drawing-reserve">每次预留金额（美元）</label>
+            <input id="drawing-reserve" type="text" inputmode="decimal" maxlength="32" aria-describedby="drawing-budget-help">
+          </div>
+          <div class="drawing-field">
+            <label for="drawing-daily-limit">每日上限（美元）</label>
+            <input id="drawing-daily-limit" type="text" inputmode="decimal" maxlength="32" aria-describedby="drawing-budget-help">
+          </div>
+          <div class="drawing-field">
+            <label for="drawing-monthly-limit">每月上限（美元）</label>
+            <input id="drawing-monthly-limit" type="text" inputmode="decimal" maxlength="32" aria-describedby="drawing-budget-help">
+          </div>
+        </div>
+      </details>
+      <div class="drawing-use">
+        <label class="drawing-toggle" for="drawing-enabled">
+          <input id="drawing-enabled" type="checkbox" aria-describedby="drawing-quota-help">
+          <span>启用 QQ 绘图</span>
+        </label>
+        <p id="drawing-quota-help">所有 QQ 群聊与私聊共用额度。每轮从首次受理起计 20 分钟，最多 2 次。每日最多 20 次，按纽约时间零点重置。</p>
+        <p id="drawing-quota-status" aria-live="polite"></p>
+      </div>
+      <button id="drawing-save" type="submit">保存设置</button>
+    </fieldset>
+    <p id="drawing-status" class="drawing-status" role="status">正在读取绘图设置…</p>
+    <button id="drawing-retry" class="drawing-retry" type="button" hidden>重新读取</button>
+  </form>
+</main>
+</body>
+</html>

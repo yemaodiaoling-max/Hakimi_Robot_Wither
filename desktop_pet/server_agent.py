@@ -36,6 +36,7 @@ from hakimi.prompt.prompt_budget import estimate_tokens
 from hakimi.tools.bot_tools import calculate
 
 from hakimi.core.owner import owner_session as _owner_session, owner_ids as _owner_ids
+from hakimi.core.owner import OWNER_NAME, OWNER_SHORT, local_terms as _local_terms, phrase_alternation as _phrases
 OWNER_SESSION = _owner_session()
 OWNER_ID = OWNER_SESSION.split(':', 1)[-1]
 OWNER_LEGACY_QQ = next(iter(sorted(set(_owner_ids()) - {OWNER_ID})), '')
@@ -395,13 +396,13 @@ def _execute_server_tool(name: str, args: dict) -> dict:
                     "skipped": "private_chat_privacy_guard",
                     "notice": "检测到涉及私聊隐私内容，已仅在桌宠本地保留，未同步至QQ端记忆库。",
                 }
-            raw_topics = args.get("topics") or "桌宠,主人"
+            raw_topics = args.get("topics") or "桌宠," + OWNER_NAME
             if isinstance(raw_topics, str):
                 topic_list = [t.strip()[:40] for t in re.split(r"[,，\s]+", raw_topics) if t.strip()][:8]
             elif isinstance(raw_topics, list):
                 topic_list = [str(t).strip()[:40] for t in raw_topics if str(t).strip()][:8]
             else:
-                topic_list = ["桌宠", "主人"]
+                topic_list = ["桌宠", OWNER_NAME]
             proposal = {
                 "note": note,
                 "kind": kind,
@@ -535,7 +536,7 @@ def _retrieve_initial_context(
             return f"{int(diff / 86400)}天前"
         return str(raw_time)
 
-    # Tail recent QQ group activity to maintain shared context with 主人
+    # Tail recent QQ group activity to maintain shared context with the owner
     recent_owner_chats = []
     try:
         chat_log = paths.runtime() / "state" / "chat_history.jsonl"
@@ -561,7 +562,7 @@ def _retrieve_initial_context(
                 item = {
                     "session_key": user_msg.get("session_key", ""),
                     "user_id": user_msg.get("user_id", ""),
-                    "sender_name": user_msg.get("sender_name", "主人"),
+                    "sender_name": user_msg.get("sender_name", OWNER_NAME),
                     "text": str(user_msg.get("text", ""))[:200],
                     "time": user_msg.get("time", ""),
                     "relative_time": rel_label,
@@ -629,7 +630,7 @@ def _consolidate_evicted_slice(state: dict, evicted_history: list, model: str = 
 
     dialogue_lines = []
     for item in filtered_history:
-        role_label = "主人(主人)" if item.get("role") == "user" else "哈基米"
+        role_label = (f"主人({OWNER_SHORT})" if OWNER_SHORT != "主人" else "主人") if item.get("role") == "user" else "哈基米"
         dialogue_lines.append(f"{role_label}: {item.get('text', '')[:300]}")
     transcript = "\n".join(dialogue_lines)
     prev_summary = state.get("rolling_summary", "")
@@ -731,9 +732,9 @@ def handle_chat(req: dict) -> dict:
     if text:
         query_for_memory = text
     elif audio_b64:
-        query_for_memory = f"主人 语音对话 {window_title}"
+        query_for_memory = f"{OWNER_NAME} 语音对话 {window_title}"
     else:
-        query_for_memory = f"主人 电脑屏幕 {window_title}"
+        query_for_memory = f"{OWNER_NAME} 电脑屏幕 {window_title}"
     memory_pack = _retrieve_initial_context(
         query_for_memory,
         history=state.get("history", []),
@@ -1009,13 +1010,13 @@ def handle_clear_context(req: dict) -> dict:
 
 
 _KNOWN_PUBLIC_GROUP_KEYWORDS = (
-    "主人子协会", "万有引力", "摸鱼部", "考据", "高数", "高等数学", "原神",
+    *_local_terms("public_group_keywords"), "万有引力", "摸鱼部", "考据", "高数", "高等数学", "原神",
     "学习群", "测试群", "协会", "俱乐部", "交流群", "讨论群", "水群",
 )
 _PRIVATE_CHAT_TEXT_RE = re.compile(
     r"私聊|单聊|小窗|私信|微信聊|"
     r"(?:找|跟|和|与)[^，。|；！？\s]{1,12}(?:私聊|单聊|小窗|聊社科|聊哲学|聊起|聊到|私下聊|单独聊)|"
-    r"抖落.*私聊"
+    r"抖落.*私聊" + _phrases("privacy_phrases")
 )
 
 
@@ -1043,7 +1044,7 @@ def _sanitize_summary_for_qq_sync(summary: str) -> str:
 
 
 def _extract_sync_topics(window_title: str, reply_text: str) -> list[str]:
-    base_topics = ["桌宠", "主人", "电脑桌面"]
+    base_topics = ["桌宠", OWNER_NAME, "电脑桌面"]
     candidates = re.findall(r"[A-Za-z0-9_]{2,18}|[\u4e00-\u9fff]{2,8}", f"{window_title} {reply_text}")
     for tok in candidates:
         if tok not in base_topics:
@@ -1090,14 +1091,14 @@ def _sync_desktop_thought_to_memory(
                 continue
             max_o = 30 if idx == 0 else 18
             max_p = 75 if idx == 0 else 36
-            o_part = f"主人:{owner_msg[:max_o]}" if owner_msg else "看屏幕"
+            o_part = f"{OWNER_SHORT}:{owner_msg[:max_o]}" if owner_msg else "看屏幕"
             p_part = f"我吐槽:『{pet_msg[:max_p]}』" if pet_msg else ""
             snippets.append(f"{o_part}->{p_part}".strip("->"))
         snippets.reverse()
         joined = " | ".join(s for s in snippets if s)
         if joined:
             win_label = clean_win[:30] or "桌面"
-            prefix = f"[桌宠实时心里话] 刚在主人电脑桌面(窗口:{win_label})陪他："
+            prefix = f"[桌宠实时心里话] 刚在{OWNER_SHORT}电脑桌面(窗口:{win_label})陪他："
             realtime_note = (prefix + joined)[:205]
             topics = _extract_sync_topics(clean_win, clean_reply)
             results["realtime"] = _execute_server_tool("memory_remember", {
@@ -1124,13 +1125,13 @@ def _sync_desktop_thought_to_memory(
             except Exception:
                 need_summary_sync = True
         if need_summary_sync:
-            summary_note = f"[桌宠近期陪伴脉络] 我在主人电脑桌面上陪他经历：{clean_summary[:180]}"[:205]
+            summary_note = f"[桌宠近期陪伴脉络] 我在{OWNER_SHORT}电脑桌面上陪他经历：{clean_summary[:180]}"[:205]
             results["summary"] = _execute_server_tool("memory_remember", {
                 "kind": "episode",
                 "key": "桌宠阶段脉络",
                 "note": summary_note,
                 "evidence": "桌宠10轮阶段整理摘要",
-                "topics": ["桌宠", "主人", "陪伴脉络"],
+                "topics": ["桌宠", OWNER_NAME, "陪伴脉络"],
             })
 
     return {"ok": True, "synced": results}
@@ -1194,7 +1195,7 @@ def handle_context_pack(req: dict) -> dict:
         except Exception as exc:
             voice_transcript = f"[语音转写异常: {type(exc).__name__}]"
 
-    search_query = voice_transcript or query or window_title or "主人 桌面陪伴"
+    search_query = voice_transcript or query or window_title or f"{OWNER_NAME} 桌面陪伴"
     memory_pack = _retrieve_initial_context(search_query)
 
     return {

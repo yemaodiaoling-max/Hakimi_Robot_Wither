@@ -24,7 +24,7 @@ from hakimi.prompt.group_profiles import SESSION_RE, resolve_profile  # noqa: F4
 BASE_DIR = paths.base()
 
 
-from hakimi.core.owner import ADMIN_IDS, ADMIN_NAMES, OWNER_NAME, owner_session
+from hakimi.core.owner import ADMIN_IDS, ADMIN_NAMES, OWNER_NAME, OWNER_SHORT, owner_session
 
 
 def is_admin_turn(target, session, messages=None):
@@ -45,8 +45,8 @@ def is_admin_turn(target, session, messages=None):
 
 
 _DESKTOP_PET_OWNER_EXAMPLES = (
-    {"scene": "主人撒娇/喊宝宝", "owner": "小猫，我很喜欢你怎么办", "hakimi": "哼，嘴这么甜是不是想逃避写作业呀|那就乖乖把这页推完，我陪你嘛"},
-    {"scene": "主人熬夜/逗猫", "owner": "宝宝～来我怀里睡觉", "hakimi": "都这么晚啦还不乖乖睡觉呢|行吧，那你先把电脑合上，胳膊借我靠一下哦"},
+    {"scene": OWNER_SHORT + "撒娇/喊宝宝", "owner": "小猫，我很喜欢你怎么办", "hakimi": "哼，嘴这么甜是不是想逃避写作业呀|那就乖乖把这页推完，我陪你嘛"},
+    {"scene": OWNER_SHORT + "熬夜/逗猫", "owner": "宝宝～来我怀里睡觉", "hakimi": "都这么晚啦还不乖乖睡觉呢|行吧，那你先把电脑合上，胳膊借我靠一下哦"},
 )
 _OWNER_TECH_TURN_RE = re.compile(
     r"代码|报错|bug|函数|公式|推导|算法|路由|服务器|模型|git|ssh|sql|python", re.I
@@ -102,9 +102,9 @@ def _desktop_pet_continuity(base: Path, session: str, now: float) -> dict | None
             latest_arc[:cap] if latest_arc else latest_realtime[0][:cap]
         )
         out["guidance"] = (
-            "同魂近况：这就是你刚在主人电脑桌面上陪他的经历，聊天或被问记不记得他时可自然顺口带出一点生活细节（如正在看的书/算法/熬夜），群聊中全程略过私密窗口与他人私聊。"
+            f"同魂近况：这就是你刚在{OWNER_SHORT}电脑桌面上陪他的经历，聊天或被问记不记得他时可自然顺口带出一点生活细节（如正在看的书/算法/熬夜），群聊中全程略过私密窗口与他人私聊。"
             if is_group else
-            "同魂近况：这就是你刚在主人电脑桌面上陪他的经历，直接自然接续。"
+            f"同魂近况：这就是你刚在{OWNER_SHORT}电脑桌面上陪他的经历，直接自然接续。"
         )
         return out
     except (OSError, sqlite3.Error, ValueError):
@@ -397,7 +397,7 @@ def build_context(data, base=BASE_DIR, now=None, *, self_history_snapshot=None):
         if not _OWNER_TECH_TURN_RE.search(str(target.get("text", ""))):
             context["group_style"] = dict(
                 context.get("group_style", {}),
-                tone="像趴在主人电脑桌面上的自家猫系同伴：软萌亲近、俏皮打趣又接住情绪，自然带点‘啦/呀/呢/哦’的温度",
+                tone=f"像趴在{OWNER_SHORT}电脑桌面上的自家猫系同伴：软萌亲近、俏皮打趣又接住情绪，自然带点‘啦/呀/呢/哦’的温度",
                 humor="轻哼打趣他的熬夜、撒娇或桌面近况，嘴上轻轻逗他但话里透着护短和惦记",
                 cat_identity="嘴硬心软、被他哄两句就悄悄翘尾巴的贴身小猫，省去生硬冷怼和机箱套话",
             )
@@ -508,11 +508,13 @@ def render_prompt(data,base=BASE_DIR,claim=None,*,cli_label=None,wait_after_turn
     if isinstance(data.get('internal_review'),dict):return render_internal_review_prompt(data,base,claim,cli_label=cli_label)
     from hakimi.prompt.tool_catalog import brief
     from hakimi.prompt.prompt_language import instructions,context as positive_context
+    from hakimi.tools.drawing_intent import offered as offer_drawing
     context=positive_context(build_context(data,base));style=instructions(paths.persona('style_guide.md',base).read_text(encoding='utf-8'))
     if cli_label:style=style.replace('python qq_cli.py',cli_label)
     footer=f'\n本轮参数：--session "{data["session_key"]}" --turn "{claim["token"]}"' if claim else ''
     admin_note = context.get('admin_guidance_text', '')
-    return style+'\n按任务选用函数对应的call工具，reply.send发送回复，reply.skip结束静默轮次。\n'+brief(cli_label or 'python qq_cli.py')+footer+instructions(lore_guidance(context))+instructions(admin_note)+_sticker_section(context,base)+'\n本轮聊天与记忆资料：\n'+json.dumps(lossless_context(context),ensure_ascii=False,separators=(',',':'))
+    tools = brief(cli_label or 'python qq_cli.py', include_drawing=bool(claim and offer_drawing(data, base)))
+    return style+'\n按任务选用函数对应的call工具，reply.send发送回复，reply.skip结束静默轮次。\n'+tools+footer+instructions(lore_guidance(context))+instructions(admin_note)+_sticker_section(context,base)+'\n本轮聊天与记忆资料：\n'+json.dumps(lossless_context(context),ensure_ascii=False,separators=(',',':'))
 
 
 def gemini_style_feedback(base):

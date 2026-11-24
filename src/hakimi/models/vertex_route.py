@@ -31,7 +31,18 @@ from urllib.request import (
     build_opener,
 )
 
-PROJECT = os.environ.get("HAKIMI_GATEWAY_PROJECT", "hakimi-local")
+def _gateway_project():
+    """Project label of the configured gateway (``gateway_provision.json``)."""
+    env = os.environ.get("HAKIMI_GATEWAY_PROJECT", "").strip()
+    if env:
+        return env
+    try:
+        return str(json.loads((paths.gateway_dir() / "gateway_provision.json").read_text())["project"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return "hakimi-local"
+
+
+PROJECT = _gateway_project()
 from hakimi.models.vertex_model import HYDROGEN, vertex_model
 
 MODEL = "gemini-3.8-flash"

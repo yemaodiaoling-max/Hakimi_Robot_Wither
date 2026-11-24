@@ -1121,7 +1121,7 @@ class TurnCoordinator:
             self._finish(state, "replied" if state.get("reply_id") else str(outcome)[:80])
             return True
 
-    def submit_reply(self, token, segments, provider, files=None, reply_to=None, rendered_math=False, interaction=None, *, mention_user=None):
+    def submit_reply(self, token, segments, provider, files=None, reply_to=None, rendered_math=False, interaction=None, *, mention_user=None, generated_drawing=False):
         from hakimi.bridge.interaction_policy import blocked_outgoing_topic
         if isinstance(segments,list) and all(isinstance(text,str) for text in segments) and blocked_outgoing_topic(''.join(segments)):
             return {'accepted':False,'reason':'ignored_topic'}
@@ -1137,7 +1137,7 @@ class TurnCoordinator:
             if self._matches(state, token, provider) and state['payload'].get('session_key', '').startswith('group:'):
                 from hakimi.transport.member_mentions import known_local_member
                 typed_member = known_local_member(self.base_dir, state['payload'], typed_uid)
-        if not files and not rendered_math:
+        if not files and not (rendered_math or generated_drawing):
             state=self.snapshot()
             if self._matches(state,token,provider) and not state.get('reply_id'):
                 from hakimi.features.diary_store import requested_export,submit_export
@@ -1169,7 +1169,7 @@ class TurnCoordinator:
             if not isinstance(session_key, str) or not re.fullmatch(r"(?:group|private):[1-9]\d*", session_key):
                 return {"accepted": False, "reason": "invalid_session"}
             pending = state.get('selected_mention') or {}
-            uid = mention_user or (pending.get('uid') if pending.get('owner') == token else None)
+            uid = mention_user or (pending.get('uid') if pending.get('owner') == token and not generated_drawing else None)
             if typed_uid and session_key.startswith('group:'):
                 if (uid and uid != typed_uid) or (not uid and not typed_member):
                     return {'accepted': False, 'reason': UNRESOLVED}

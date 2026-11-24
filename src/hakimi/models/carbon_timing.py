@@ -43,7 +43,7 @@ MAX_IDLE_SECONDS = 480
 class CarbonProgress:
     """Only model content, accepted tool calls and receipts renew this window."""
     delivery = {'reply.send', 'reply.skip', 'voice.speak', 'voice.hum', 'math.send', 'files.send',
-                'chat.export', 'diary.export', 'members.mention'}
+                'chat.export', 'diary.export', 'members.mention', 'image.draw'}
 
     def __init__(self, coordinator, claim, measured, clock=time.monotonic):
         self.coordinator = coordinator

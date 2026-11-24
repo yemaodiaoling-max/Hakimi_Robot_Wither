@@ -1,0 +1,114 @@
+.drawing-page {
+  max-width: 740px;
+}
+.drawing-header {
+  margin-bottom: 24px;
+}
+.drawing-header h1 {
+  margin: 0 0 8px;
+  font-size: clamp(1.6rem, 3vw, 2.15rem);
+}
+.drawing-header p,
+.drawing-field p,
+.drawing-use p {
+  margin: 0;
+  color: var(--shell-muted, #b8cdda);
+}
+.drawing-card {
+  padding: clamp(16px, 4vw, 26px);
+  border: 1px solid var(--shell-line, #365064);
+  border-radius: 12px;
+  background: var(--shell-surface, #142332);
+}
+.drawing-card fieldset {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.drawing-card legend {
+  padding: 0;
+  margin-bottom: 16px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.drawing-field {
+  display: grid;
+  gap: 6px;
+}
+.drawing-field label {
+  font-weight: 600;
+}
+.drawing-field input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--shell-line, #496175);
+}
+.drawing-field p {
+  font-size: .875rem;
+  overflow-wrap: anywhere;
+}
+.drawing-budget {
+  padding: 12px 14px;
+  border: 1px solid var(--shell-line, #365064);
+  border-radius: 8px;
+}
+.drawing-budget summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.drawing-budget p {
+  margin: 10px 0;
+  color: var(--shell-muted, #b8cdda);
+  font-size: .875rem;
+}
+.drawing-budget-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 12px;
+}
+.drawing-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  cursor: pointer;
+}
+.drawing-toggle input {
+  min-height: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--shell-accent, #8bdcce);
+}
+.drawing-use p {
+  margin-top: 6px;
+  font-size: .875rem;
+  line-height: 1.6;
+}
+.drawing-use p:empty {
+  display: none;
+}
+.drawing-card button {
+  justify-self: start;
+  padding: 8px 14px;
+  border: 1px solid var(--shell-accent, #8bdcce);
+  color: var(--shell-accent, #aaf0dd);
+}
+.drawing-card button:hover:not(:disabled) {
+  background: var(--shell-accent, #8bdcce);
+  color: var(--shell-bg, #111b28);
+}
+.drawing-status {
+  margin: 12px 0 0;
+  min-height: 1.5em;
+  color: var(--shell-muted, #b8cdda);
+}
+.drawing-status[data-error="true"] {
+  color: #ffb4a8;
+}
+.drawing-retry {
+  margin-top: 8px;
+}

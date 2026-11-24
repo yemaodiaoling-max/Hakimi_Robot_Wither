@@ -12,7 +12,7 @@ from hakimi.memory.text import stamp, terms
 _DESKTOP_PRIVATE_LEAK_RE = re.compile(
     r"私聊|单聊|小窗|私信|微信聊|"
     r"(?:找|跟|和|与)[^，。|；！？\s]{1,12}(?:聊社科|聊哲学|私下聊|单独聊)|"
-    r"抖落.*私聊"
+    r"抖落.*私聊" + __import__("hakimi.core.owner", fromlist=["x"]).phrase_alternation("privacy_phrases")
 )
 
 _BILI_GENERIC_TERMS = frozenset({

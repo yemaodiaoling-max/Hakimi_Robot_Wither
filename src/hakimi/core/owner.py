@@ -5,16 +5,24 @@ Everything here is read once per process; restart services after changing it.
 
     {
       "name": "主人",                    # how the bot refers to its owner
+      "short_name": "主人",              # shorter call name used in casual text (default: name)
       "aliases": ["主人的群名片"],        # other nicknames that identify the owner
       "ids": ["<官方通道 member/user id>", "<旧 QQ 号>"],
       "pet_session": "private:<id>",     # the private session the desktop pet writes to
       "bot_self_id": "0",                # the bot's own QQ number on the old OneBot channel (optional)
-      "known_bot_ids": []                # other bots in your groups, never treated as people
+      "known_bot_ids": [],               # other bots in your groups, never treated as people
+      "local": {                         # optional vocabulary of your own groups
+        "privacy_phrases": [],           #   phrases that mark a desktop observation as a private chat
+        "public_group_keywords": [],     #   window titles that are public groups, not private chats
+        "signature_terms": [],           #   nicknames / running jokes that count as core memories
+        "no_instant_wake_ids": []        #   members whose @-mentions never wake the bot instantly (spam)
+      }
     }
 """
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -79,6 +87,22 @@ def known_bot_ids() -> frozenset:
     return frozenset(i for i in ids if i.isdigit())
 
 
+def short_name() -> str:
+    return str(load().get("short_name") or owner_name())
+
+
+def local_terms(key: str) -> tuple:
+    """Instance vocabulary from ``owner.json: local.<key>`` (empty when not configured)."""
+    local = load().get("local")
+    return tuple(_strings(local.get(key))) if isinstance(local, dict) else ()
+
+
+def phrase_alternation(key: str) -> str:
+    """``|phrase1|phrase2`` (escaped) to append to a regex alternation; empty when none."""
+    return "".join("|" + re.escape(term) for term in local_terms(key))
+
+
 ADMIN_IDS = owner_ids()
 ADMIN_NAMES = owner_names()
 OWNER_NAME = owner_name()
+OWNER_SHORT = short_name()

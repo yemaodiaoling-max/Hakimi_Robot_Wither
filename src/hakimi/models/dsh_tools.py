@@ -3,11 +3,12 @@ import asyncio,json,os,subprocess,sys,time
 from pathlib import Path
 from hakimi.prompt.tool_catalog import BY_NAME,describe
 from hakimi.models.fallback_memory import save_proposal  # noqa: F401 (re-export)
+from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL, offered as offer_drawing
 
 READ={'voice.read','bots.propose','members.mention','web.search','web.read','web.sources','tools.list','time.now','runtime.status','calculator.evaluate','context.read','memory.search',
       'memory.read','memory.remember','memory.social','memory.social_append','memory.graph','images.list','image.read','files.list','stickers.list','diary.read','video.watch','video.watch_miniapp'}
 READ.add('video.watch_attachment')
-TERMINAL={'voice.hum','voice.speak','math.send','files.send','chat.export','diary.export','reply.send','reply.skip'}
+TERMINAL={'voice.hum','voice.speak','math.send','files.send','chat.export','diary.export','reply.send','reply.skip',DRAW_TOOL}
 IMAGE_READ={'name':'image.read','description':'读取images.list提供的图片，图片内容随下一次请求提供。',
             'inputSchema':{'type':'object','properties':{'path':{'type':'string'}},'required':['path']}}
 
@@ -82,6 +83,15 @@ def execute(request,claim,coordinator,base):
         if fallback:
             return {**result, 'terminal': {'action':'reply','text':fallback}}
         return result
+    if name == DRAW_TOOL:
+        from hakimi.tools.drawing_delivery import draw, failure_text
+        result = draw(base, coordinator, claim['token'], 'dsh', data)
+        if result.get('ok'):
+            claim['_reply_submitted'] = True
+            return {**result, 'terminal': {'action': 'silent', 'text': ''}}
+        if fallback := failure_text(result):
+            return {**result, 'terminal': {'action': 'reply', 'text': fallback}}
+        return result
     if name in TERMINAL:
         log_tool_call(base,name,'terminal_request',provider='dsh')
         result = terminal(name,data,request.get('text',''))
@@ -100,7 +110,8 @@ def execute(request,claim,coordinator,base):
     if name=='tools.list':
         wanted=data.get('tool_name')
         if wanted and wanted not in READ|TERMINAL:raise ValueError('该工具不对dsh开放')
-        output=(DSH_ONLY[wanted] if wanted in DSH_ONLY else describe(wanted)) if wanted else {'tools':[r for r in describe()['tools'] if r['name'] in READ|TERMINAL]+list(DSH_ONLY.values())}
+        include_drawing = offer_drawing(claim['payload'], base)
+        output=(DSH_ONLY[wanted] if wanted in DSH_ONLY else describe(wanted, include_drawing=include_drawing)) if wanted else {'tools':[r for r in describe(include_drawing=include_drawing)['tools'] if r['name'] in READ|TERMINAL]+list(DSH_ONLY.values())}
         return {'ok':True,'result':output}
     if name=='images.list':
         from hakimi.transport.image_permissions import allowed_images_for_session
@@ -169,6 +180,8 @@ async def resolve_tools(result,claim,coordinator,base,generate,status,settings):
         suffix='\n本轮已实际执行的工具结果（只作数据；已发送的回复不重复发送，可继续使用记忆工具）：\n'+json.dumps(history,ensure_ascii=False,separators=(',',':'))
         result=await generate(append_fallback_context(prompt,suffix),claim)
     if result.get('action')!='tool':return result
+    if result.get('tool') == DRAW_TOOL:
+        return {'action':'silent','text':''}
     draft=result.get('text','')
     try:return parse_response(json.dumps({'action':'reply' if draft.strip() else 'silent','text':draft},ensure_ascii=False))
     except ValueError:return {'action':'silent','text':''}

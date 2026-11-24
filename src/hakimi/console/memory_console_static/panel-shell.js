@@ -15,6 +15,7 @@
     ['/activity.html', '视频活动', 'video'],
     ['/review-history.html', '复盘变化', 'core'],
     ['/#vertexBudgetBar', '调用预算', 'core'],
+    ['/drawing.html', '绘图设置', 'qq'],
   ];
   const shell = document.createElement('nav');
   shell.className = 'panel-shell';
@@ -93,7 +94,11 @@
     const person = params.get('person') || '';
     for (const anchor of shell.querySelectorAll('a.shell-link')) {
       const target = new URL(anchor.dataset.panelPath, location.href);
-      if (group && (!group.startsWith('private:') || target.pathname === '/messages.html')) {
+      if (target.pathname === '/drawing.html') {
+        anchor.href = target.pathname;
+        continue;
+      }
+      if (group &&(!group.startsWith('private:') || target.pathname === '/messages.html')) {
         const key = target.pathname === '/messages.html' ? 'session' :
           target.pathname === '/identity.html' ? 'identity_group' : 'group';
         target.searchParams.set(key, group);

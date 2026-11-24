@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import re
+import sqlite3
 import time
 from pathlib import Path
 from hakimi.bridge.reply_format import MAX_REPLY_SEGMENTS, MAX_SEGMENT_CHARS
@@ -90,6 +91,15 @@ class DeliveryGuard:
 
     def _complete(self, status):
         pending = self.state.get("pending") or {}
+        segments = pending.get('segments')
+        if isinstance(segments, list) and any(isinstance(text, str) and text.startswith('[CQ:file,name=_drawing_') for text in segments):
+            from hakimi.tools.drawing_delivery import delivery_finished, drawing_in
+            if drawing_id := drawing_in(segments):
+                try:
+                    delivery_finished(self.state_path.parent.parent, drawing_id, pending['reply_id'], status)
+                except (OSError, sqlite3.Error):
+                    from hakimi.tools.math_render import log_tool_call
+                    log_tool_call(self.state_path.parent.parent, 'image.draw', 'delivery_receipt_error')
         if pending.get('rendered_math'):
             from hakimi.core.runtime_io import atomic_replace
             folder=self.state_path.parent/'math_receipts'

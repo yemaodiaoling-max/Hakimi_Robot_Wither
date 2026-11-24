@@ -40,7 +40,7 @@ CORE_PERSONA_SIGNALS = frozenset({
 })
 
 CORE_SIGNATURE_SIGNALS = frozenset({
-    "外号", "称呼", "叫我", "自称", "破盆", "白饭", "群友0e49", "鲸鱼娘",
+    "外号", "称呼", "叫我", "自称", "破盆", "白饭", *__import__("hakimi.core.owner", fromlist=["x"]).local_terms("signature_terms"), "鲸鱼娘",
     "鲷鱼烧", "金枪鱼罐头", "猫猫大人", "约定", "答应", "承诺",
 })
 

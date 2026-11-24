@@ -1,10 +1,11 @@
 """Stable event-based tool groups for direct sessions."""
 import re
+from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL, offered as offer_drawing
 
 IMAGE = {'images.list', 'image.read', 'stickers.collect'}
 VIDEO = {'video.watch', 'video.watch_miniapp'}
 FILES = {'files.list', 'files.send', 'chat.export', 'diary.export'}
-OPTIONAL = IMAGE | VIDEO | FILES | {'voice.speak','voice.read','voice.hum','video.watch_attachment'}
+OPTIONAL = IMAGE | VIDEO | FILES | {'voice.speak','voice.read','voice.hum','video.watch_attachment', DRAW_TOOL}
 
 
 def select_names(payload, names, base=None):
@@ -18,6 +19,8 @@ def select_names(payload, names, base=None):
     from hakimi import paths
     from hakimi.voice.tts import offer_mode, offer_hum
     base = paths.base() if base is None else base
+    if DRAW_TOOL in names and offer_drawing(payload, base):
+        selected.add(DRAW_TOOL)
     if offer_mode(payload,base):
         selected.add('voice.speak')
     if offer_hum(payload,base):
