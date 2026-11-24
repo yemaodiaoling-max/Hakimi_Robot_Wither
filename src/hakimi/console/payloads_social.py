@@ -12,6 +12,29 @@ from hakimi.console.graph_display import display_score, select_nodes
 from hakimi.social.social_fields import HAKIMI_SUBJECT; from hakimi.social.social_query import assessment_evidence, latest_assessments, latest_by_direction; from hakimi.social.interaction_familiarity import interaction_stats, pair_familiarity
 
 
+def _score_scope(group):
+    """Scope for scores and profiles.
+
+    A group filter only decides *who* is listed; a person's assessments,
+    interaction familiarity and profile are one cross-group whole (the bot's
+    own behaviour reads them that way too).  An explicitly named private
+    session stays private and is never merged into the public view.
+    """
+    return group if str(group or "").startswith("private:") else None
+
+
+def _names(db, ids, group):
+    """Group card name first, then the newest public-group nickname."""
+    ids = list(ids)
+    names = _name_map(db, ids, group or None)
+    if group:
+        missing = [value for value in ids if str(value) not in names]
+        if missing:
+            for key, value in _name_map(db, missing, None).items():
+                names.setdefault(key, value)
+    return names
+
+
 def people_payload(base, values):
     q = str(values.get("q", "") or "").strip()[:120]
     group = str(values.get("group", "") or "").strip()
@@ -35,12 +58,13 @@ def people_payload(base, values):
             "LIMIT ? OFFSET ?", [*params, *search_params, size, (page - 1) * size],
         ).fetchall()
         ids = [row["user_id"] for row in rows]
-        names = _name_map(db, ids, group or None)
+        names = _names(db, ids, group)
         assessments = {}
         if ids:
             marks = ",".join("?" for _ in ids)
-            assessment_scope = " AND session=?" if group else " AND session LIKE 'group:%'"
-            assessment_params = ids + ([group] if group else [])
+            score_scope = _score_scope(group)
+            assessment_scope = " AND session=?" if score_scope else " AND session LIKE 'group:%'"
+            assessment_params = ids + ([score_scope] if score_scope else [])
             for row in db.execute(
                     "SELECT target_id,provenance,COUNT(*) n,MAX(created_at) last_at FROM social_assessments "
                     "WHERE state='active' AND subject_id='hakimi' AND target_id IN (" + marks + ")"
@@ -106,8 +130,16 @@ def person_payload(base, values):
     if not re.fullmatch(r"[1-9][0-9]{0,19}", target):
         raise ApiError(400, "invalid_person", "人物ID格式无效")
     group = str(values.get("group", "") or "").strip()
-    clause, params = _session_clause(group)
+    filter_clause, filter_params = _session_clause(group)
+    score_scope = _score_scope(group)
+    # The filter decides whether the person is visible here; the profile
+    # itself (counts, aliases, notes, scores) is the cross-group whole.
+    clause, params = _session_clause(score_scope or "")
     with db_conn(base) as db:
+        if not db.execute(
+                "SELECT 1 FROM records r WHERE r.user_id=? AND r.state!='deleted'" + filter_clause +
+                " LIMIT 1", [target, *filter_params]).fetchone():
+            raise ApiError(404, "person_not_found", "人物在当前范围内没有可见记录")
         identity = db.execute(
             "SELECT user_id,COUNT(*) n,SUM(CASE WHEN kind='chat' THEN 1 ELSE 0 END) chats,"
             "MIN(at) first_at,MAX(at) last_at,COUNT(DISTINCT session) sessions "
@@ -115,7 +147,7 @@ def person_payload(base, values):
             [target, *params]).fetchone()
         if not identity:
             raise ApiError(404, "person_not_found", "人物在当前范围内没有可见记录")
-        names = _name_map(db, [target], group or None)
+        names = _names(db, [target], group)
         alias_rows = db.execute(
             "SELECT nickname,at FROM records r WHERE r.user_id=? AND nickname!=''" + clause +
             " ORDER BY at DESC LIMIT 8", [target, *params]).fetchall()
@@ -146,7 +178,7 @@ def person_payload(base, values):
             })
         # Newest per stable key first; older versions stay available as history.
         manual.sort(key=lambda item: (not item["is_latest"], -(float(item["time"] or 0))), reverse=False)
-        assessments = _assessments_for(latest_by_direction(latest_assessments(db, session=group or None)), target)
+        assessments = _assessments_for(latest_by_direction(latest_assessments(db, session=score_scope)), target)
         for item in assessments:
             item["evidence"] = _evidence_details(db, item)
             item["staleness"] = _staleness(db, item)
@@ -154,7 +186,7 @@ def person_payload(base, values):
         terra = [item for item in assessments if item["provenance"] == "terra_assisted"]
         handwritten_scores = [item for item in assessments if item["provenance"] == "gemini_manual"]
         self_values = _self_ids(db)
-        stats = interaction_stats(db, session=group or None, self_ids=self_values, limit=50000)
+        stats = interaction_stats(db, session=score_scope, self_ids=self_values, limit=50000)
         hakimi_score, hakimi_basis, hakimi_stats = pair_familiarity(stats, target, "hakimi")
         partners = []
         for key in stats:
@@ -168,8 +200,7 @@ def person_payload(base, values):
                 "id": other, "name": "", "score": score, "basis": basis, "stats": detail,
             })
         partners.sort(key=lambda item: (item["stats"] or {}).get("last_at", 0), reverse=True)
-        partner_names = _name_map(db, [item["id"] for item in partners if item["id"] != "hakimi"],
-                                  group or None)
+        partner_names = _names(db, [item["id"] for item in partners if item["id"] != "hakimi"], group)
         for item in partners:
             item["name"] = ("哈基米（本机）" if item["id"] == "hakimi"
                             else partner_names.get(item["id"], "用户" + item["id"]))
@@ -193,7 +224,7 @@ def person_payload(base, values):
             for value in (str(item["subject_id"]), str(item["target_id"])):
                 if value != HAKIMI_SUBJECT:
                     relation_ids.add(value)
-        relation_names = _name_map(db, relation_ids, group or None)
+        relation_names = _names(db, relation_ids, group)
         relation_names[target] = names.get(target, "用户" + target)
         relation_names[HAKIMI_SUBJECT] = "哈基米（本机）"
     from hakimi.social.social_behavior import behavior_for
@@ -250,16 +281,18 @@ def relation_payload(base, values):
     if left == right:
         raise ApiError(400, "invalid_relation", "关系两端不能相同")
     group = str(values.get("group", "") or "").strip()
+    _session_clause(group)  # validate the filter even though scores are cross-group
+    score_scope = _score_scope(group)
     with db_conn(base) as db:
         assessments = latest_by_direction([
-            item for item in latest_assessments(db, session=group or None)
+            item for item in latest_assessments(db, session=score_scope)
             if {str(item["subject_id"]), str(item["target_id"])} == {left, right}
         ])
         for item in assessments:
             item["evidence"] = _evidence_details(db, item)
             item["staleness"] = _staleness(db, item)
-        names = _name_map(db, [value for value in (left, right) if value != HAKIMI_SUBJECT], group or None)
-        stats = interaction_stats(db, session=group or None, self_ids=_self_ids(db), limit=50000)
+        names = _names(db, [value for value in (left, right) if value != HAKIMI_SUBJECT], group)
+        stats = interaction_stats(db, session=score_scope, self_ids=_self_ids(db), limit=50000)
         score, basis, detail = pair_familiarity(stats, left, right)
     if not assessments and not detail:
         raise ApiError(404, "relation_not_found", "没有这段关系的可见依据")
@@ -362,14 +395,20 @@ def graph_payload(base, values):
                     " GROUP BY r.user_id", [focus, *params]).fetchone()
                 if exact:
                     rows.append(dict(exact))
-        current_assessments = latest_assessments(db, session=group or None)
-        stats = interaction_stats(db, session=group or None, self_ids=_self_ids(db), limit=50000)
+        # Scores are cross-group; the group filter only chooses the nodes, so
+        # edges between two members also carry what was learnt elsewhere.
+        score_scope = _score_scope(group)
+        cross_group = bool(group) and not score_scope
+        current_assessments = latest_assessments(db, session=score_scope)
+        stats = interaction_stats(db, session=score_scope, self_ids=_self_ids(db), limit=50000)
         participant_ids = {row["user_id"] for row in rows}
         for item in current_assessments:
+            if cross_group and str(item["session"]) != group:
+                continue
             for value in (str(item["subject_id"]), str(item["target_id"])):
                 if value != HAKIMI_SUBJECT and re.fullmatch(r"[1-9][0-9]{0,19}", value):
                     participant_ids.add(value)
-        for key in stats:
+        for key in ({} if cross_group else stats):
             for value in key:
                 if value != HAKIMI_SUBJECT and re.fullmatch(r"[1-9][0-9]{0,19}", value):
                     participant_ids.add(value)
@@ -386,7 +425,7 @@ def graph_payload(base, values):
             for value in missing_ids:
                 if value not in known:
                     rows.append({"user_id": value, "n": 0, "chats": 0, "last_at": 0, "sessions": 0})
-        names = _name_map(db, [row["user_id"] for row in rows], group or None)
+        names = _names(db, [row["user_id"] for row in rows], group)
         nodes = {}
 
         def add_person_row(row):

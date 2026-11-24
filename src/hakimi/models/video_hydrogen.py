@@ -37,8 +37,8 @@ def config(root):
     try:
         client, budget = review_backend(root)
         if budget.get('qq_flash_low_profile'):
-            from bili_companion.cognition.flash_duty import FLASH_LOW_MODEL
-            return {'model': FLASH_LOW_MODEL, 'budget': budget}
+            from bili_companion.cognition.flash_duty import active_text_models
+            return {'model': active_text_models(budget)['qq'], 'budget': budget}
         return client.text_settings(budget, 'reasoning')
     except Exception:
         return None
@@ -139,8 +139,8 @@ def request(session, payload, timeout, settings, root):
         raise RuntimeError('vertex_turn_ownership_lost')
     model = settings['model']
     config = settings['budget']
-    pinned_flash = bool(config.get('qq_flash_low_profile'))
-    duty_enabled = pinned_flash or bool(config.get('flash_duty_profile') or config.get('qq_hydrogen_profile'))
+    flash_low_standby = bool(config.get('qq_flash_low_profile'))
+    duty_enabled = flash_low_standby or bool(config.get('flash_duty_profile') or config.get('qq_hydrogen_profile'))
     companion_text = None
     session.last_error = {'provider': PROVIDER, 'model': model, 'message': 'video_claude_failed'}
     try:
@@ -159,7 +159,7 @@ def request(session, payload, timeout, settings, root):
                 raise TimeoutError('model_response_timeout')
             if not recover:
                 # Leave time in the same QQ turn for the next provider.
-                if not pinned_flash:
+                if provider == HYDROGEN_PROVIDER or not flash_low_standby:
                     remaining -= min(45 if provider == HYDROGEN_PROVIDER else 30, remaining / 2)
                 session.last_error = {'provider': provider, 'model': primary_model,
                                       'message': provider + '_failed'}
@@ -189,7 +189,7 @@ def request(session, payload, timeout, settings, root):
 
             # Once a round uses Claude, a recovery affects the next QQ turn.
             # The portable transcript gives Claude the previous tool results.
-            if not pinned_flash and getattr(session, '_video_hybrid_owner', None) is owner:
+            if not flash_low_standby and getattr(session, '_video_hybrid_owner', None) is owner:
                 result = hybrid(None)
             else:
                 result = run_text_duty(config, 'qq', original, hybrid,
