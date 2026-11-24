@@ -245,10 +245,10 @@ class RelationshipPolicyTests(unittest.TestCase):
         # 1. 阿罗夏带减抗（）
         e1 = normalize_event(
             {"event_type": "dismissive_or_nitpick", "evidence": "@哈基米 阿罗夏带减抗（）",
-             "reaction_type": "annoyed", "reaction_source": "reply", "reaction_evidence": "咳群友028爪子滑了嘴瓢一下",
+             "reaction_type": "annoyed", "reaction_source": "reply", "reaction_evidence": "咳群友4182爪子滑了嘴瓢一下",
              "reason": "指出哈基米关于角色技能减抗设定的口误，哈基米找补认栽"},
             "@哈基米 阿罗夏带减抗（）",
-            reply_texts=("咳群友028爪子滑了嘴瓢一下",),
+            reply_texts=("咳群友4182爪子滑了嘴瓢一下",),
         )
         self.assertEqual(e1["event_type"], "banter")
         self.assertEqual(e1["reaction_type"], "engaged")

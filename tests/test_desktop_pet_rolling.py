@@ -98,19 +98,19 @@ class DesktopPetRollingTests(unittest.TestCase):
 
     def test_private_chat_screen_not_synced_to_qq_memory(self):
         # Window title heuristics distinguish private IM sessions vs known public groups
-        self.assertTrue(_is_private_chat_observation("仍然是彩色群友389！等4个会话", "", ""))
+        self.assertTrue(_is_private_chat_observation("仍然是彩色群友63cb！等4个会话", "", ""))
         self.assertTrue(_is_private_chat_observation("微信", "看屏幕", "吐槽"))
-        self.assertTrue(_is_private_chat_observation("Gemini", "看屏幕", "怕本喵抖落你跟群友214的私聊呀"))
+        self.assertTrue(_is_private_chat_observation("Gemini", "看屏幕", "怕本喵抖落你跟群友317a的私聊呀"))
         self.assertFalse(_is_private_chat_observation("万有引力パワー摸鱼部等3个会话", "看屏幕", "物理推导好难"))
         self.assertFalse(_is_private_chat_observation("主人子协会等4个会话", "看屏幕", "大家在群里讨论原神"))
         self.assertFalse(_is_private_chat_observation("analysis.pdf - Microsoft Edge", "看屏幕", "翻到第6页"))
 
         # Summary sanitization strips only private chat clauses
-        dirty_summary = "主人先看物理推导PDF。随后找群友389私聊聊社科。最后在B站看科普视频。"
+        dirty_summary = "主人先看物理推导PDF。随后找群友63cb私聊聊社科。最后在B站看科普视频。"
         cleaned = _sanitize_summary_for_qq_sync(dirty_summary)
         self.assertIn("物理推导PDF", cleaned)
         self.assertIn("科普视频", cleaned)
-        self.assertNotIn("群友389", cleaned)
+        self.assertNotIn("群友63cb", cleaned)
         self.assertNotIn("私聊", cleaned)
 
         # memory_remember blocks private chat notes
@@ -120,7 +120,7 @@ class DesktopPetRollingTests(unittest.TestCase):
                 "note": "主人在和好友私聊讨论哲学",
                 "kind": "episode",
                 "key": "桌宠实时想法",
-                "evidence": "桌宠窗口:仍然是彩色群友389！等4个会话",
+                "evidence": "桌宠窗口:仍然是彩色群友63cb！等4个会话",
             })
         self.assertTrue(res.get("ok"))
         self.assertEqual(res.get("skipped"), "private_chat_privacy_guard")
@@ -129,18 +129,18 @@ class DesktopPetRollingTests(unittest.TestCase):
         # _sync_desktop_thought_to_memory skips realtime sync on private chat windows
         with patch.object(pet_mod, "get_memory_store", return_value=mock_store):
             sync_res = _sync_desktop_thought_to_memory(
-                window_title="仍然是彩色群友389！等4个会话",
-                owner_text="[看屏幕: 仍然是彩色群友389！等4个会话]",
+                window_title="仍然是彩色群友63cb！等4个会话",
+                owner_text="[看屏幕: 仍然是彩色群友63cb！等4个会话]",
                 reply_text="刚把物理推导扔一边就跟她聊社科啦",
                 recent_turns=[{"window": "Gemini", "owner": "看屏幕", "pet": "看Section 2", "private": False}],
-                rolling_summary="正在啃物理推导。跟彩色群友389私聊。",
+                rolling_summary="正在啃物理推导。跟彩色群友63cb私聊。",
                 is_rotate=True,
             )
         self.assertEqual(sync_res["synced"]["realtime"]["skipped"], "private_chat_privacy_guard")
         mock_store.remember_manual.assert_called_once()
         saved_note = mock_store.remember_manual.call_args.args[0]["note"]
         self.assertIn("物理推导", saved_note)
-        self.assertNotIn("彩色群友389", saved_note)
+        self.assertNotIn("彩色群友63cb", saved_note)
         self.assertNotIn("私聊", saved_note)
 
     def test_group_retrieval_filters_desktop_pet_private_leaks(self):
@@ -155,11 +155,11 @@ class DesktopPetRollingTests(unittest.TestCase):
             # Insert a leaked desktop_pet record and a clean desktop_pet record
             store.remember_manual(
                 {
-                    "note": "[桌宠实时心里话] 怕本喵去大群抖落你跟群友389的私聊呀",
+                    "note": "[桌宠实时心里话] 怕本喵去大群抖落你跟群友63cb的私聊呀",
                     "kind": "episode",
                     "user_id": owner_id,
                     "key": "桌宠实时想法",
-                    "evidence": "桌宠窗口:仍然是彩色群友389！等4个会话",
+                    "evidence": "桌宠窗口:仍然是彩色群友63cb！等4个会话",
                     "topics": ["桌宠", "主人", "私聊"],
                 },
                 session=owner_session,
@@ -192,7 +192,7 @@ class DesktopPetRollingTests(unittest.TestCase):
             )
             joined = "\n".join(group_hits)
             self.assertNotIn("私聊", joined)
-            self.assertNotIn("群友389", joined)
+            self.assertNotIn("群友63cb", joined)
             self.assertIn("BerryFlow物理推导", joined)
 
 
@@ -207,7 +207,7 @@ class DesktopPetRollingTests(unittest.TestCase):
         import desktop_pet_agent as pet
 
         self.assertIn("2–4 字短词破冰 | 短句", pet.DESKTOP_PERSONA)
-        self.assertIn("行，那我群友028", pet.DESKTOP_PERSONA)
+        self.assertIn("行，那我群友4182", pet.DESKTOP_PERSONA)
         self.assertNotIn("每条 10~45 字左右", pet.DESKTOP_PERSONA)
 
         with tempfile.TemporaryDirectory() as tmp:

@@ -9,7 +9,7 @@ from hakimi.models.dsh_text_judge import JudgeError
 
 class ResidentTests(unittest.TestCase):
     def test_mentions_use_off_and_continuation_keeps_low(self):
-        rows = [{'message_id': '1', 'user_id': '123', 'nickname': '群友388', 'text': '猫今天吃饭了吗'}]
+        rows = [{'message_id': '1', 'user_id': '123', 'nickname': '群友9d04', 'text': '猫今天吃饭了吗'}]
         with patch.object(judge, 'run_judge', return_value={'selected_message_ids': ['1']}) as run:
             judge.select_messages(rows, '', Path('.'), focus_ids=['1'], limit=12)
             self.assertEqual(run.call_args.kwargs['thinking'], 'off')

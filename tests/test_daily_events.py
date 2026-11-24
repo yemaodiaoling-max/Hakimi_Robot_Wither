@@ -164,17 +164,17 @@ class DailyEventTests(unittest.TestCase):
         self.index.observe({'session_key': 'group:1', 'user_id': '101', 'nickname': '主人',
                             'text': '用GPT来提升你的写作吧，你和gpt差不多会写', 'message_id': 'm1',
                             'received_at': self.now - 120, 'self_id': '999'})
-        self.index.observe({'session_key': 'group:1', 'user_id': '102', 'nickname': '群友388',
+        self.index.observe({'session_key': 'group:1', 'user_id': '102', 'nickname': '群友9d04',
                             'text': '宝宝就免了，在DS里劝我用GPT想看我辞职', 'message_id': 'm2',
                             'received_at': self.now - 100, 'reply_to': 'm1', 'direct_targets': ['101'], 'self_id': '999'})
         with self.index.db() as db:
             packets = daily_events.prepare(db, self.now, with_impressions=True)
             self.assertEqual(packets[0]['author_name'], '主人')
-            self.assertEqual(packets[1]['author_name'], '群友388')
+            self.assertEqual(packets[1]['author_name'], '群友9d04')
             self.assertEqual(packets[1]['reply_author_name'], '主人')
             self.assertEqual(packets[1]['mention_names'], {'101': '主人'})
             items = daily_events.validate([{'source_ids': [packets[0]['id'], packets[1]['id']],
-                'text': '主人发提示逗群友388；群友388回称宝宝就免了。', 'event_time': ''}], packets)
+                'text': '主人发提示逗群友9d04；群友9d04回称宝宝就免了。', 'event_time': ''}], packets)
             daily_events.apply(self.index, db, packets, items, self.now)
             rec = db.execute("SELECT user_id FROM records WHERE channel='daily_events' ORDER BY id DESC LIMIT 1").fetchone()
             self.assertEqual(rec[0], '')

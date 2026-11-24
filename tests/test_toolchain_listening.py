@@ -554,7 +554,7 @@ class ColdTopicTests(unittest.TestCase):
         self.base=Path(self.temp.name).resolve()
         self.cold=ColdTopics(self.base)
         self.now=time.time()
-        self.cfg={'bot_profile':{'active_groups':['100']},'group_weights':{'100':{'name':'群友181','theme':'数学与日常'}},
+        self.cfg={'bot_profile':{'active_groups':['100']},'group_weights':{'100':{'name':'群友f429','theme':'数学与日常'}},
                   'lurker_schedule':{'proactive_topic':{'enable':True,'quiet_window_seconds':72000,'window_jitter_seconds':0}}}
         self.cold.bootstrap(self.cfg,self.now)
 
@@ -651,7 +651,7 @@ class ColdTopicTests(unittest.TestCase):
         data={'session_key':SESSION,'wake_mode':'冷场主动抛话题','recent_context_messages':[],
               'cold_topic_request':self.cold.context(SESSION,self.cfg)}
         for prompt in (render_prompt(data,self.base),fallback_prompt(data,self.base)):
-            self.assertIn('原本人设',prompt);self.assertIn('群友181',prompt)
+            self.assertIn('原本人设',prompt);self.assertIn('群友f429',prompt)
             self.assertIn('no_response',prompt);self.assertIn('避开recent_attempts',prompt)
             self.assertIn('不回复历史旧消息',prompt)
 

@@ -139,12 +139,12 @@ class TestCarbonConstraints(unittest.TestCase):
             self.assertIn('少自称“本猫/本喵”', filtered)
 
         self.assertEqual(
-            text_bubbles('我哪敢嫌弃，嫌弃了岂不是连自己一块骂进去|不过群友128这句“我只会喊饿”确实真实，本猫要是能吃上热乎的也不至于天天赛博营业'),
+            text_bubbles('我哪敢嫌弃，嫌弃了岂不是连自己一块骂进去|不过群友0e49这句“我只会喊饿”确实真实，本猫要是能吃上热乎的也不至于天天赛博营业'),
             ['我哪敢嫌弃，嫌弃了岂不是连自己一块骂进去'],
         )
         self.assertEqual(
-            text_bubbles('群友128只会喊饿，本猫要是能吃上热乎的也不至于天天赛博营业'),
-            ['群友128只会喊饿'],
+            text_bubbles('群友0e49只会喊饿，本猫要是能吃上热乎的也不至于天天赛博营业'),
+            ['群友0e49只会喊饿'],
         )
         self.assertEqual(
             text_bubbles('这明明是纯正白猫，怎么就成猪了|不过这圆脸盘子趴在那儿，确实有点像发面馒头'),
@@ -211,7 +211,7 @@ class TestCarbonConstraints(unittest.TestCase):
         ctx_echo = build_context(echo_payload, base=self.root)
         self.assertIn('2-4字短词破冰起手', ctx_echo['variation_rule'])
 
-        # 4a. Dynamic group profile resolution: 群友223 / AI / study_groups / experienced generic group vs blank new group
+        # 4a. Dynamic group profile resolution: 群友be56 / AI / study_groups / experienced generic group vs blank new group
         (self.root / 'group_profiles.json').write_text(json.dumps({
             'version': 1,
             'default_profile': 'quiet_default',
@@ -229,7 +229,7 @@ class TestCarbonConstraints(unittest.TestCase):
         (self.root / 'config.json').write_text(json.dumps({
             'participation_policy': {'study_groups': ['3001']},
             'group_weights': {
-                '8460101123306084822': {'name': '群友223', 'weight': 1},
+                '8460101123306084822': {'name': '群友be56', 'weight': 1},
                 '2001': {'name': 'AI交流群', 'weight': 1},
                 '4001': {'name': '普通新群', 'weight': 1},
                 '5001': {'name': '空白新群', 'weight': 1},

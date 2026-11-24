@@ -37,7 +37,7 @@ class VoiceContextOfferTests(unittest.TestCase):
             db.execute('INSERT INTO receipts(session,filename,text,at) VALUES (?,?,?,?)',(session,'test.silk','不进入提示',time.time()))
 
     def test_context_discussion_and_unknown_wording_offer_model_choice(self):
-        for text in ['你的语音挺好听','能否以一条语音向群友389道声晚安','语音为什么这么卡','语音识别','为什么语音发不了','音色可爱','你的声带又掉线了？','麦克风没声音吗']:
+        for text in ['你的语音挺好听','能否以一条语音向群友63cb道声晚安','语音为什么这么卡','语音识别','为什么语音发不了','音色可爱','你的声带又掉线了？','麦克风没声音吗']:
             with self.subTest(text=text):
                 p=payload(text)
                 self.assertEqual(tts.offer_mode(p,self.base),'context')
@@ -47,7 +47,7 @@ class VoiceContextOfferTests(unittest.TestCase):
         self.assertNotIn('voice.speak',self.names(payload('今天吃什么')))
 
     def test_first_greeting_and_natural_explicit_requests(self):
-        for text in ['你好，想听听你的声音','让我听听你的声音','念给我听','用语音对群友389说一句俏皮话']:
+        for text in ['你好，想听听你的声音','让我听听你的声音','念给我听','用语音对群友63cb说一句俏皮话']:
             with self.subTest(text=text):
                 self.assertEqual(tts.offer_mode(payload(text),self.base),'requested')
                 self.assertEqual(tts.speech_mode(payload(text),self.base),'requested')
@@ -86,7 +86,7 @@ class VoiceContextOfferTests(unittest.TestCase):
 
     def test_current_silence_veto_does_not_import_old_or_other_author_veto(self):
         for history in [[row('old','不要发语音',author='u2')],[row('old','不要发语音')]]:
-            self.assertEqual(tts.speech_mode(payload('用语音对群友389说晚安',history),self.base),'requested')
+            self.assertEqual(tts.speech_mode(payload('用语音对群友63cb说晚安',history),self.base),'requested')
         for text in ['只用文字回答','不要语音','这次打字就好','还是打字吧','别念出来']:
             p=payload(text,[row('old','【已送达语音，合成朗读】晚安',author='SELF',media={'kind':'file','name':'_voice_test.silk'})])
             self.assertIsNone(tts.offer_mode(p,self.base))

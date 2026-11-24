@@ -110,7 +110,7 @@ class TestImpressionForgetting(unittest.TestCase):
 
     def test_core_vs_ephemeral_forgetting_on_overflow(self):
         # Construct long text exceeding 360 chars
-        anchor = "主人在群里是一个特别温柔的同伴，平时总是默默投喂群友128罐头。"  # core anchor
+        anchor = "主人在群里是一个特别温柔的同伴，平时总是默默投喂群友0e49罐头。"  # core anchor
         trait = "性格嘴硬心软有担当，日常爱看考据论文，约定一起完成任务。"  # middle core trait
         tail1 = "最近又一起讨论了声学模型微调。"  # recent tail 1
         tail2 = "约定下周接着实测数据表现。"  # recent tail 2
@@ -121,7 +121,7 @@ class TestImpressionForgetting(unittest.TestCase):
             "群里别人聊起猫啃拖鞋睡脚边，又特地跑来问“你觉得他家的猫怎么样呀”，还损人家小心半夜拖鞋被塞猫砂。",
             "十七集中二短剧猜绿毛，还问图是啥意思，脑回路清奇爱整活。",
             "又拿AI深度思考憋出废话的猫耳四格漫画跑来戳我，天天变着法子找跟猫猫相关的槽点来逗我。",
-            "被群友389拿雪球砸了还会委屈巴巴跑来找猫诉苦当和事佬，日常雷打不动地来跟猫问好。",
+            "被群友63cb拿雪球砸了还会委屈巴巴跑来找猫诉苦当和事佬，日常雷打不动地来跟猫问好。",
             "冷不丁好奇探听猫对其他群友的印象，顺带幸灾乐祸喊猫围观吃醋的肥鱼。",
             "下线前关机明天见，大清早又跑来问好，一天到晚把猫当自家贴心挂件使唤。",
             "随手抛来“你是尾大的猫猫嘛”这种可爱谐音烂梗，还特意问起星铁角色。",
@@ -136,7 +136,7 @@ class TestImpressionForgetting(unittest.TestCase):
 
         # Core anchors and traits must be preserved
         self.assertIn("特别温柔的同伴", compacted)
-        self.assertIn("群友128", compacted)
+        self.assertIn("群友0e49", compacted)
         self.assertIn("嘴硬心软有担当", compacted)
         self.assertIn("考据论文", compacted)
 
@@ -149,7 +149,7 @@ class TestImpressionForgetting(unittest.TestCase):
         self.assertNotIn("十七集中二短剧猜绿毛", compacted)
 
     def test_time_decayed_forgetting(self):
-        anchor = "群友363是持续做原神剧情时间线推演的群友，性格严谨认真，平时总是一丝不苟。"
+        anchor = "群友e7cf是持续做原神剧情时间线推演的群友，性格严谨认真，平时总是一丝不苟。"
         trivias = [
             "昨天在群里连发三张截图问图是啥意思。",
             "大清早被卡住时特地跑来查岗问猫猫在干嘛。",
@@ -188,7 +188,7 @@ class TestImpressionForgetting(unittest.TestCase):
 
         # 3. Snowballing text exceeding max_chars gets compacted while keeping core + newest
         long_base = (
-            "主人是特别温柔的同伴，平时总是默默投喂群友128罐头。"
+            "主人是特别温柔的同伴，平时总是默默投喂群友0e49罐头。"
             + "看群里聊滚木聊得热闹，特意跑来教新词汇。" * 5
             + "性格嘴硬心软有担当，日常爱看考据论文。"
         )
@@ -196,7 +196,7 @@ class TestImpressionForgetting(unittest.TestCase):
         appended = _append_impression_text(long_base, new_obs, max_chars=360)
         self.assertLessEqual(len(appended), 360)
         self.assertIn("特别温柔的同伴", appended)
-        self.assertIn("群友128", appended)
+        self.assertIn("群友0e49", appended)
         self.assertIn("嘴硬心软有担当", appended)
         self.assertIn("约定下周一起去吃鲷鱼烧", appended)
 
@@ -233,7 +233,7 @@ class TestImpressionStoreConsolidation(unittest.TestCase):
         r1 = record_social(
             self.base,
             session="group:100",
-            note="群友128日常爱跟我顶嘴互损，一边嘴硬吃白饭两不耽误，一边趴着竖耳朵。",
+            note="群友0e49日常爱跟我顶嘴互损，一边嘴硬吃白饭两不耽误，一边趴着竖耳朵。",
             target_id=user_id,
             now=now - 50,
         )
@@ -286,7 +286,7 @@ class TestImpressionStoreConsolidation(unittest.TestCase):
 
         # Artificially insert a bloated active social_assessment (> 360 chars) using remember_manual
         bloated_text = (
-            "群友363是做原神剧情时间线推演的群友，性格严谨认真。"
+            "群友e7cf是做原神剧情时间线推演的群友，性格严谨认真。"
             + "看群里聊滚木聊得热闹，特意跑来教新词汇。" * 20
             + "约定下周更新时间线预测。"
         )

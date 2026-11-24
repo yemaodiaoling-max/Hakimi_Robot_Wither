@@ -172,7 +172,7 @@ class AutobiographyBridgeTests(unittest.TestCase):
             db.execute(
                 "INSERT INTO records VALUES (2,'episode','private:10001','10001',?,?,?,0,'active','desktop_pet','hydrogen',0,'桌宠阶段脉络')",
                 (
-                    "[桌宠近期陪伴脉络] 我在主人电脑桌面上陪他经历：主人在推路径积分传播子公式。随后找群友214甲私聊聊社科。最后打开B站看游戏视频。",
+                    "[桌宠近期陪伴脉络] 我在主人电脑桌面上陪他经历：主人在推路径积分传播子公式。随后找群友317a甲私聊聊社科。最后打开B站看游戏视频。",
                     self.now - 50,
                     "桌宠10轮阶段整理摘要",
                 ),
@@ -192,7 +192,7 @@ class AutobiographyBridgeTests(unittest.TestCase):
         self.assertEqual(ids, {"qq:M1", "qq:desktop-pet:M2"})
         pet_item = next(i for i in items if i["source_id"] == "qq:desktop-pet:M2")
         self.assertIn("路径积分传播子", pet_item["text"])
-        self.assertNotIn("群友214甲", pet_item["text"])
+        self.assertNotIn("群友317a甲", pet_item["text"])
         self.assertNotIn("私聊", pet_item["text"])
 
         sampler = QQInterestSampler(self.qq_db_path, qq_store, rng=random.Random(7), owner_private_session="private:10001")

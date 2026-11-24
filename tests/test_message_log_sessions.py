@@ -12,7 +12,7 @@ class Sessions(unittest.TestCase):
             (1,'chat','group:200','22','旧群原文',100,'1','原昵称','active'),
             (2,'lore','group:200','22','不能冒充聊天的记忆',999,'note','原昵称','active'),
             (3,'chat','group:200','22','已删除',999,'3','原昵称','deleted'),
-            (4,'chat','private:22','22','私聊原文',110,'4','群友214','active')])
+            (4,'chat','private:22','22','私聊原文',110,'4','群友317a','active')])
         self.db.commit()
         rows=[dict(session_key='group:100',message_id=str(1000+i),received_at=1000+i,text='活跃群',user_id='33') for i in range(400)]
         (self.state/'chat_history.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
@@ -37,7 +37,7 @@ class Sessions(unittest.TestCase):
         self.assertEqual([r['text'] for r in rows],['私聊原文'])
     def test_per_session_300_bound(self):
         self.db.executemany('INSERT INTO records VALUES(?,?,?,?,?,?,?,?,?)',[
-            (100+i,'chat','group:200','22','历史'+str(i),200+i,str(100+i),'群友214','active') for i in range(400)])
+            (100+i,'chat','group:200','22','历史'+str(i),200+i,str(100+i),'群友317a','active') for i in range(400)])
         self.db.commit();rows=recent_messages(self.base,'group:200')
         self.assertEqual(len(rows),300);self.assertEqual(rows[0]['text'],'历史399')
 

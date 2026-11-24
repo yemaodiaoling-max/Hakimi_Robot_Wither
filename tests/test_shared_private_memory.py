@@ -10,7 +10,7 @@ class SharedPrivateMemoryTests(unittest.TestCase):
             db.execute('CREATE TABLE records(id INTEGER,session TEXT,user_id TEXT,kind TEXT,state TEXT,shared INTEGER,text TEXT)')
             db.executemany('INSERT INTO records VALUES(?,?,?,?,?,?,?)', [
                 (1,'group:123','42','chat','active',0,'群聊原文'),
-                (2,'private:42','42','chat','active',0,'群友388的私聊原文'),
+                (2,'private:42','42','chat','active',0,'群友9d04的私聊原文'),
                 (3,'private:42','','commitment','active',0,'约定原文'),
                 (4,'private:99','99','chat','active',0,'别人的私聊'),
                 (5,'private:42','42','chat','deleted',0,'已删除'),
@@ -19,7 +19,7 @@ class SharedPrivateMemoryTests(unittest.TestCase):
                 sql, args = StoreRetrievalMixin.scope('group:123', ['42'], cross)
                 rows = db.execute('SELECT id,session,text FROM records r WHERE '+sql+' ORDER BY id', args).fetchall()
                 self.assertEqual([r[0] for r in rows], [1,2,3])
-                self.assertEqual(rows[1][1:], ('private:42','群友388的私聊原文'))
+                self.assertEqual(rows[1][1:], ('private:42','群友9d04的私聊原文'))
 
     def test_private_peer_is_linked_even_without_visible_user_list(self):
         with sqlite3.connect(':memory:') as db:

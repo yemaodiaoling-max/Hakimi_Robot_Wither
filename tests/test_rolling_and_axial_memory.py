@@ -98,7 +98,7 @@ class RollingContextTests(unittest.TestCase):
         evicted = [
             {"message_id": "e1", "user_id": "1001", "sender_name": "主人",
              "text": "明天下午两点在老地方不见不散，记得带上资料", "timestamp": now - 300},
-            {"message_id": "e2", "user_id": "1002", "sender_name": "群友132",
+            {"message_id": "e2", "user_id": "1002", "sender_name": "群友57e5",
              "text": "好呀，我最近在看天体物理学，最喜欢双星系统了", "timestamp": now - 200},
             {"message_id": "e3", "user_id": "1003", "sender_name": "肥鱼",
              "text": "讨论了半天，结论是方案A更靠谱，定下来了", "timestamp": now - 100},

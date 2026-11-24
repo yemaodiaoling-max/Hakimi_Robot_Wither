@@ -109,11 +109,11 @@ class ConsoleRegressionTests(ReviewBase):
     def test_closeness_can_be_highlighted_for_each_source(self):
         mid = self.chat()
         record_social(
-            self.base, "group:1", "辅助亲近", "101", relationship_type="群友214",
+            self.base, "group:1", "辅助亲近", "101", relationship_type="群友317a",
             affinity=30, closeness=70, confidence=60, evidence_memory_ids=[mid],
             provider="dsh", provenance="dsh_assisted", origin_message_id="assisted-closeness")
         record_social(
-            self.base, "group:1", "亲笔亲近", "101", relationship_type="群友214",
+            self.base, "group:1", "亲笔亲近", "101", relationship_type="群友317a",
             affinity=20, closeness=25, confidence=80, evidence_memory_ids=[mid],
             provider="gemini", provenance="gemini_manual", origin_message_id="manual-closeness")
         assisted = console.graph_payload(self.base, {"measure": "closeness", "source": "assisted"})

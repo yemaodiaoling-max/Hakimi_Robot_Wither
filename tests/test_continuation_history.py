@@ -8,14 +8,14 @@ from hakimi.bridge.conversation_scheduler import ConversationScheduler
 
 class ContinuationHistoryTests(unittest.TestCase):
     def test_old_exchange_supplies_context_without_becoming_candidates(self):
-        history = [{'message_id': '100', 'user_id': '42', 'nickname': '群友088', 'text': '怎么也得凑个六翼'},
+        history = [{'message_id': '100', 'user_id': '42', 'nickname': '群友8eed', 'text': '怎么也得凑个六翼'},
                    {'message_id': '101', 'user_id': 'SELF', 'nickname': '哈基米', 'text': '二翼是基础款普通天使吧'},
                    {'message_id': '102', 'user_id': 'SELF', 'nickname': '哈基米', 'text': '六翼炽天使那是高定配置了'}]
-        rows = [{'message_id': '103', 'user_id': '42', 'nickname': '群友088', 'text': '又是断臂又是无貌', 'reply_to': '102'}]
+        rows = [{'message_id': '103', 'user_id': '42', 'nickname': '群友8eed', 'text': '又是断臂又是无貌', 'reply_to': '102'}]
         def runner(task, base):
             request = json.loads(task)
             self.assertEqual([r['text'] for r in request['previous_exchange']], [r['text'] for r in history])
-            self.assertEqual(request['previous_exchange'][0]['name'], '群友088')
+            self.assertEqual(request['previous_exchange'][0]['name'], '群友8eed')
             self.assertEqual([r['text'] for r in request['messages']], ['又是断臂又是无貌'])
             self.assertEqual(request['messages'][0]['reply_to'], 'h3')
             self.assertNotIn('previous_reply', request)
@@ -25,7 +25,7 @@ class ContinuationHistoryTests(unittest.TestCase):
     def test_existing_logs_resolve_the_selected_exchange_only(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory); (base/'state').mkdir()
-            rows = [{'session_key': 'group:123', 'message_id': '10', 'user_id': '42', 'nickname': '群友388', 'text': '原始问题', 'received_at': 1},
+            rows = [{'session_key': 'group:123', 'message_id': '10', 'user_id': '42', 'nickname': '群友9d04', 'text': '原始问题', 'received_at': 1},
                     {'session_key': 'group:456', 'message_id': '10', 'user_id': '99', 'text': '其他群内容', 'received_at': 2}]
             sent = [{'session_key': 'group:123', 'trigger_id': 'turn1', 'message_id': '11', 'text': '第一条实际回复', 'at': 3},
                     {'session_key': 'group:123', 'trigger_id': 'turn1', 'message_id': '12', 'text': '第二条实际回复', 'at': 4},

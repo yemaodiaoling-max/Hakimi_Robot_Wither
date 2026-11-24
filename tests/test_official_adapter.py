@@ -172,9 +172,9 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await self.adapter.translate("C2C_MESSAGE_CREATE", self.data()))
         self.assertIsNone(await self.adapter.translate("GROUP_MESSAGE_CREATE", self.data(group_openid="WRONG")))
         self.assertIsNone(await self.adapter.translate("GROUP_MESSAGE_CREATE", self.data(timestamp="2020-01-01T00:00:00Z")))
-        original = "[群聊的聊天记录]\n=== 消息 1 ===\n[消息内容] 群友204的原话\n第二行"
+        original = "[群聊的聊天记录]\n=== 消息 1 ===\n[消息内容] 群友1955的原话\n第二行"
         bot_message = await self.adapter.translate("GROUP_MESSAGE_CREATE", self.data("BOT_MESSAGE", content=original,
-            author={"id": "BOT", "bot": True, "username": "群友204"}, message_scene={"source": "ai_search"}))
+            author={"id": "BOT", "bot": True, "username": "群友1955"}, message_scene={"source": "ai_search"}))
         self.assertEqual(bot_message["raw_message"], transport.cq_escape(original))
         self.assertIsNotNone(await self.adapter.translate("GROUP_MESSAGE_CREATE", self.data()))
         self.assertIsNone(await self.adapter.translate("GROUP_MESSAGE_CREATE", self.data()))
@@ -331,25 +331,25 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(text, result["raw_message"])
 
     async def test_qq_record_envelope_preserves_speakers_text_and_attachments(self):
-        element = {"content": "[群聊的聊天记录]\n=== 消息 1 ===\n[发送者] 群友204\n"
+        element = {"content": "[群聊的聊天记录]\n=== 消息 1 ===\n[发送者] 群友1955\n"
                               "[消息内容] 第一行\n第二行\n[附件1] 类型:图片 文件名:例图.png\n\n"
                               "=== 消息 2 ===\n[消息内容] https://example.org/\n[发送者] 群友\n\n"
-                              "=== 消息 3 ===\n[发送者] 群友204\n[附件1] 类型:图片 文件名:仅附件.jpg"}
+                              "=== 消息 3 ===\n[发送者] 群友1955\n[附件1] 类型:图片 文件名:仅附件.jpg"}
         event = await self.adapter.translate("GROUP_MESSAGE_CREATE", self.data(message_type=102,
             content="看这段记录", msg_elements=[element]))
-        self.assertEqual(event["raw_message"], "看这段记录\n群友204：第一行\n第二行\n附件（图片）：例图.png"
-                                               "\n\n群友：https://example.org/\n\n群友204：附件（图片）：仅附件.jpg")
+        self.assertEqual(event["raw_message"], "看这段记录\n群友1955：第一行\n第二行\n附件（图片）：例图.png"
+                                               "\n\n群友：https://example.org/\n\n群友1955：附件（图片）：仅附件.jpg")
         quote = await self.adapter.translate("GROUP_MESSAGE_CREATE", self.data("QUOTE", message_type=103, content=" ",
             msg_elements=[{"content": "=== 消息 1 ===\n[消息内容] 被引用正文\n独立第二行\n"
                                       "[消息类型] 引用消息\n[关联消息]\n旧引用历史"}]))
         self.assertEqual(quote["raw_message"], "被引用正文\n独立第二行")
         caption = await self.adapter.translate("GROUP_MESSAGE_CREATE", self.data("CAPTION", message_type=102,
             content="随消息发的原话\n[群聊的聊天记录]\n=== 消息 1 ===\n"
-                    "[消息内容] 转发者原话\n[发送者] 群友204\n[消息类型] 引用消息\n[关联消息]\n"
+                    "[消息内容] 转发者原话\n[发送者] 群友1955\n[消息类型] 引用消息\n[关联消息]\n"
                     "--- 第1条 ---\n    [消息内容] 关联内容\n    第二行\n    [消息类型] 普通文本\n\n"
                     "=== 消息 2 ===\n无法识别的包装项\n\n=== 消息 3 ===\n[发送者] 群友\n"
                     "[附件1] 类型:图片 文件名:附件.png 尺寸:800×600 大小:83KB URL:https://qq.com/image?rkey=private"))
-        self.assertEqual(caption["raw_message"], "随消息发的原话\n群友204：转发者原话\n引用：关联内容\n第二行"
+        self.assertEqual(caption["raw_message"], "随消息发的原话\n群友1955：转发者原话\n引用：关联内容\n第二行"
                                                 "\n\n群友：附件（图片）：附件.png\n\n"
                                                 + transport.cq_escape("[部分 QQ 聊天记录未能读取]"))
 
@@ -367,7 +367,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         embed = {"title": "展示标题", "description": "正式描述", "prompt": "平台预览",
                  "fields": [{"name": "项目", "value": "数值"}]}
         event = await self.adapter.translate("GROUP_MESSAGE_CREATE", self.data("EMBED", content="展示标题",
-            author={"id": "BOT", "bot": True, "username": "群友204"}, embeds=[embed]))
+            author={"id": "BOT", "bot": True, "username": "群友1955"}, embeds=[embed]))
         self.assertEqual(event["raw_message"], "展示标题\n正式描述\n项目\n数值")
         self.assertIsNone(await self.adapter.translate("GROUP_AT_MESSAGE_CREATE", self.data("EMBED_PREVIEW",
             content="", embeds=[{"prompt": "平台预览"}])))
