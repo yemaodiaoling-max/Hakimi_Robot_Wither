@@ -45,7 +45,7 @@ from hakimi.bridge.conversation_scheduler import ConversationScheduler, enabled 
 from hakimi.core.runtime_io import read_json_cached, invalidate
 from hakimi.core.context_window import select_context
 from hakimi.transport.forward_messages import expand_forward, message_text
-from hakimi.tools.bilibili_video import find_url, normalize_cards
+from hakimi.tools.bilibili_video import normalize_cards
 from hakimi.features.codex_help import report_fault, project_root
 from hakimi.tools.feeding import record_interaction
 from hakimi.bridge.cold_topics import cold_store, MODE as COLD_MODE, settings as cold_settings
@@ -356,10 +356,6 @@ class DynamicHakimiEngine:
 
         raw_text = event.get("raw_message", "").strip()
         topic_cfg = cfg["topic_bias"]
-        for bad_kw in topic_cfg.get("ignored_keywords", []):
-            if bad_kw in raw_text and not find_url(raw_text) and not (adaptive_enabled(cfg) and direct_attention(event, cfg)):
-                return False, [f"命中屏蔽词:{bad_kw}"], ""
-
         now = time.time()
         nickname = event.get("sender", {}).get("card") or event.get("sender", {}).get("nickname", f"QQ_{user_id}")
         msg_id = str(event.get("message_id", int(now * 1000)))
@@ -1322,7 +1318,7 @@ async def process_incoming_event(event: dict):
         from hakimi.voice.store import enqueue
         from hakimi.bridge.interaction_policy import ignored_text
         native_raw=str(event.get('raw_message',''))
-        if ignored_text(native_raw,cfg) or any(word in native_raw for word in cfg.get('topic_bias',{}).get('ignored_keywords',[])) and not direct_attention(event,cfg):return
+        if ignored_text(native_raw,cfg):return
         enqueue(BASE_DIR,event,priority=msg_type=='private' or direct_attention(event,cfg))
         return
     if message_id is not None:
@@ -1337,10 +1333,6 @@ async def process_incoming_event(event: dict):
     raw_text = event.get("raw_message", "").strip()
     from hakimi.bridge.interaction_policy import ignored_text
     if ignored_text(raw_text,cfg):return
-    if (any(keyword in raw_text for keyword in cfg.get("topic_bias", {}).get("ignored_keywords", []))
-            and not find_url(raw_text) and not (adaptive_enabled(cfg) and direct_attention(event, cfg))):
-        return
-
     # Image downloads / get_msg may take seconds; do not block WS acknowledgements.
     image_paths = []
     cleaned = await asyncio.to_thread(

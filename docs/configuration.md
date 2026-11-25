@@ -34,7 +34,7 @@ hakimi config show config.json --where runtime
 | `bot_profile` | 名字、活跃/忽略/低频群、忽略的用户、是否接私聊 |
 | `lurker_schedule` | 潜水窗口：随机查看间隔、被@/私聊即时唤醒、各群冷却；`proactive_topic` 是冷场主动抛话题 |
 | `group_weights` | 每个群的参与权重与最低分 |
-| `topic_bias` | 偏好关键词、忽略关键词 |
+| `topic_bias` | 偏好关键词 |
 | `delivery_policy` | 发送节奏：全局/单群间隔、每分钟上限、去重窗口、平台报错暂停、分条上限 |
 | `participation_policy` | 主动参与：开关、单群/全局 24 小时次数 |
 | `fallback` | 备用模型：开关、主模型宽限与超时、调用间隔与每小时上限 |

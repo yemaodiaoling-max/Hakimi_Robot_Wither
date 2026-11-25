@@ -131,12 +131,12 @@ def _audit_watermark(row, now):
 
 def recover_study_messages(base, cfg, now, *, reply_watermarks=True):
     """Return bounded messages/reply times, or None when inputs are uncertain."""
+    from hakimi.bridge.interaction_policy import ignored_text
     try:
         if not _epoch(now, now) or not isinstance(cfg, dict):
             return None
-        policy, profile, topic = (cfg.get("participation_policy", {}), cfg.get("bot_profile", {}),
-                                  cfg.get("topic_bias", {}))
-        if not all(isinstance(item, dict) for item in (policy, profile, topic)):
+        policy, profile = cfg.get("participation_policy", {}), cfg.get("bot_profile", {})
+        if not all(isinstance(item, dict) for item in (policy, profile)):
             return None
         groups = _ids(policy.get("study_groups", []))
         active, ignored = _ids(profile.get("active_groups", [])), _ids(profile.get("ignored_groups", []))
@@ -149,10 +149,6 @@ def recover_study_messages(base, cfg, now, *, reply_watermarks=True):
         excluded = set(_KNOWN_BOTS) | _ids([profile.get("self_qq", bot_identity.SELF_QQ)])
         for key in ("ignored_user_ids", "known_bot_ids", "ignored_bot_ids"):
             excluded |= _ids(profile.get(key, [])) | _ids(cfg.get(key, []))
-        keywords = topic.get("ignored_keywords", [])
-        if (not isinstance(keywords, list) or len(keywords) > 1000
-                or any(not isinstance(item, str) or not 1 <= len(item) <= 300 for item in keywords)):
-            return None
         base = Path(base).resolve()
         from hakimi.bridge.turn_lanes import LANES
         turn_names = ("turn_state.json",) + tuple("turn_lanes/"+lane+".json" for lane in LANES if lane)
@@ -228,7 +224,7 @@ def recover_study_messages(base, cfg, now, *, reply_watermarks=True):
             if (not _epoch(at, now) or not 0 <= now - at <= 600 or at <= watermarks[session]
                     or type(uid) not in (str, int) or not _ID.fullmatch(str(uid)) or str(uid) in excluded
                     or row.get("is_bot", False) is not False or not isinstance(text, str)
-                    or not text.strip() or any(keyword in text for keyword in keywords)):
+                    or not text.strip() or ignored_text(text, cfg)):
                 continue
             recovered.append({"time": str(row.get("time", ""))[:40], "message_id": message,
                               "session_key": session, "user_id": str(uid), "nickname": str(row.get("nickname", ""))[:120],

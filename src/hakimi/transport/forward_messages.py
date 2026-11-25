@@ -7,13 +7,17 @@ from urllib.parse import parse_qs, urlsplit
 
 
 QQ_RECORD_TYPES = (102, 103, '102', '103')
-QQ_RECORD_HEADER = re.compile(r'^[ \t]*\[群聊的聊天记录\][ \t]*(?:\r?\n|$)', re.MULTILINE)
+QQ_RECORD_HEADER = re.compile(
+    r'^[ \t]*(?:\[群聊的聊天记录\][ \t]*(?:\r?\n|$)|'
+    r'\[[^\[\]\r\n]{1,120}的聊天记录\][ \t]*(?:\r?\n|$)(?=\s*(?:=== 消息 1 ===|\Z)))',
+    re.MULTILINE)
 QQ_RECORD_ENTRY = re.compile(r'^=== 消息 ([0-9]+) ===[ \t]*(?:\r?\n|$)', re.MULTILINE)
 QQ_RECORD_FIELD = re.compile(r'^\[(发送者|发送时间|消息时间|时间|消息类型|附件[0-9]+)\][ \t]?([^\r\n]*)$')
 QQ_RECORD_BODY = re.compile(r'\A\[消息内容\][ \t]?')
 QQ_QUOTE_TAIL = re.compile(r'\r?\n\[消息类型\][ \t]*引用消息[ \t]*(?:\r?\n\[关联消息\](?:\r?\n|[ \t]|$)|\Z)')
 QQ_RELATED_RECORD = re.compile(
-    r'\r?\n\[关联消息\][ \t]*\r?\n[ \t]*(?:--- 第[0-9]+条 ---|=== 消息 [0-9]+(?:\.[0-9]+)* ===)[ \t]*\r?\n')
+    r'\r?\n\[关联消息\][ \t]*\r?\n(?=[ \t]*(?:--- 第[0-9]+条 ---|=== 消息 [0-9]+(?:\.[0-9]+)* ===)[ \t]*(?:\r?\n|$))')
+QQ_RELATED_ENTRY = re.compile(r'^([ \t]*)(?:--- 第[0-9]+条 ---|=== 消息 [0-9]+(?:\.[0-9]+)* ===)[ \t]*$', re.MULTILINE)
 QQ_ATTACHMENT_FIELDS = re.compile(r'类型[:：](.+?)[ \t]+文件名[:：](.+)')
 QQ_ATTACHMENT_METADATA = re.compile(
     r'[ \t,，;；]+(?=(?:(?:大小|文件大小|宽度|高度|尺寸|文件地址|下载地址|链接|URL|SIZE|WIDTH|HEIGHT)[:：]|(?:https?:)?//))',
@@ -38,17 +42,39 @@ def qq_record_attachment(value):
     return ''
 
 
-def _related_rows(content):
-    indent = re.match(r'[ \t]+(?=\[)', content)
-    if not indent:
+def _related_rows(content, depth):
+    """Each marker owns only its indented block; sibling speakers stay separate."""
+    if depth > 4:
+        return [{'text': '[更深层记录未展开]'}]
+    content = content.replace('\r\n', '\n')
+    markers = QQ_RELATED_ENTRY.finditer(content)
+    first = next(markers, None)
+    if not first:
         return []
-    prefix = indent[0]
+    rows = []
+    current = first
+    for following in markers:
+        if following[1] != first[1]:
+            continue
+        rows.extend(_related_entry(content[current.end():following.start()], depth))
+        if len(rows) >= 64:
+            return rows[:64] + [{'text': '[关联消息过长，以上为节选]'}]
+        current = following
+    rows.extend(_related_entry(content[current.end():], depth))
+    return rows
+
+
+def _related_entry(block, depth):
+    block = block.strip('\n')
+    prefix = re.match(r'[ \t]*(?=\[)', block)
+    if not prefix:
+        return [{'text': '[部分 QQ 聊天记录未能读取]'}]
     lines = []
-    for line in content.splitlines(keepends=True):
-        if line.strip() and not line.startswith(prefix):
+    for line in block.splitlines(keepends=True):
+        if line.strip() and not line.startswith(prefix[0]):
             break
-        lines.append(line.removeprefix(prefix))
-    return _record_rows('=== 消息 1 ===\n' + ''.join(lines).rstrip('\r\n'), nested=True) or []
+        lines.append(line.removeprefix(prefix[0]))
+    return _record_rows('=== 消息 1 ===\n' + ''.join(lines), typed=True, nested=depth) or []
 
 
 def _record_rows(content, *, quote=False, typed=False, nested=False):
@@ -97,6 +123,10 @@ def _record_rows(content, *, quote=False, typed=False, nested=False):
                 else:
                     unreadable = True
             first_line += 1
+        card_summary = None
+        if end_line >= 2 and lines[end_line-2].strip() == '[消息类型] 卡片消息' and lines[end_line-1].startswith('[卡片消息]'):
+            card_summary = lines[end_line-1].strip()
+            end_line -= 1
         marker = QQ_RECORD_BODY.match(lines[first_line]) if first_line < end_line else None
         if marker:
             recognized = True
@@ -112,7 +142,7 @@ def _record_rows(content, *, quote=False, typed=False, nested=False):
                         end_attachments.append(attachment)
                     else:
                         unreadable = True
-                elif field[1] == '消息类型' and (nested or related or field[2].strip() in ('引用消息', '聊天记录', '普通文本')):
+                elif field[1] == '消息类型' and (nested or related or field[2].strip() in ('引用消息', '聊天记录', '合并转发消息', '普通文本', '卡片消息')):
                     pass
                 else:
                     break
@@ -127,10 +157,16 @@ def _record_rows(content, *, quote=False, typed=False, nested=False):
             continue
         if attachments:
             recognized = True
+        if card_summary and not body.strip():
+            body = card_summary
         row = {'text': body} if body.strip() else {}
         if related:
             related_text = content[entry.end() + related.end():following.start() if following else len(content)]
-            row['quotes'] = [] if nested else _related_rows(related_text)
+            is_forward = (QQ_RECORD_HEADER.fullmatch(body.strip()) or body.strip() == '[聊天记录]'
+                          or '[消息类型] 合并转发消息' in content[entry.end():entry.end()+related.start()].splitlines())
+            row['forwarded' if is_forward else 'quotes'] = _related_rows(related_text, nested+1)
+        elif card_summary and body.lstrip().startswith('[卡片消息] 合并转发消息'):
+            row['forwarded'] = []
         if attachments or end_attachments:
             row['attachments'] = attachments + list(reversed(end_attachments))
         if row:
@@ -146,6 +182,9 @@ def _record_rows(content, *, quote=False, typed=False, nested=False):
 
 def _record_line(row):
     parts = [row['text']] if row.get('text') else []
+    if 'forwarded' in row:
+        forwarded = '\n\n'.join(_record_line(item) for item in row['forwarded'])
+        parts.append('转发记录：\n' + forwarded if forwarded else '转发记录正文未提供')
     if 'quotes' in row:
         quoted = '\n\n'.join(_record_line(item) for item in row['quotes'])
         parts.append('引用：' + quoted if quoted else '引用了另一条消息')
@@ -156,7 +195,13 @@ def _record_line(row):
 
 def qq_record_text(content, *, quote=False, typed=False, nested=False):
     rows = _record_rows(content, quote=quote, typed=typed, nested=nested)
-    return None if rows is None else '\n\n'.join(_record_line(row) for row in rows)
+    if rows is None:
+        return None
+    body = '\n\n'.join(_record_line(row) for row in rows)
+    header = QQ_RECORD_HEADER.match(content)
+    if header and header[0].strip() != '[群聊的聊天记录]':
+        return header[0].strip() + '\n' + (body or '[QQ仅提供了转发标题]')
+    return body
 
 
 def _context_entry(row, *, quoted=False):
@@ -167,6 +212,11 @@ def _context_entry(row, *, quoted=False):
         entry['text'] = text if len(text) <= limit else text[:limit-1] + '…'
     if row.get('attachments'):
         entry['attachments'] = [label[:160] for label in row['attachments'][:3]]
+    if 'forwarded' in row:
+        entry['forwarded'] = ([_context_entry(item, quoted=True) for item in row['forwarded'][:12]]
+                              or [{'text': 'QQ仅提供了转发摘要'}])
+        if len(row['forwarded']) > 12:
+            entry['forwarded'].append({'text': '其余转发条目已省略'})
     if 'quotes' in row:
         entry['quotes'] = [_context_entry(item, quoted=True) for item in row['quotes'][:4]] or [{'text': '引用内容未提供'}]
     return entry
@@ -181,6 +231,14 @@ def split_at_context(elements):
         raw = element.get('content') if isinstance(element, dict) else None
         if isinstance(raw, str) and element.keys() == {'content'}:
             rows = _record_rows(raw[:32000], quote=True)
+            header = QQ_RECORD_HEADER.match(raw)
+            named_record = header and header[0].strip() != '[群聊的聊天记录]'
+            if rows and (named_record or
+                         len(rows) == 1 and rows[0].get('forwarded') and
+                         QQ_RECORD_HEADER.fullmatch(rows[0].get('text','').strip())):
+                # A named record is a quoted artifact, not an at-context chat window.
+                remaining.append(element)
+                continue
             if rows is not None:
                 history.extend(_context_entry(row) for row in rows[-10:])
                 continue
@@ -261,7 +319,7 @@ def qq_element_content(elements, *, record_type=None):
 
     def visit(items, parent_type, depth):
         nonlocal remaining
-        if depth > 2 or not isinstance(items, list):
+        if depth > 4 or not isinstance(items, list):
             return
         for element in items[:remaining]:
             if not remaining:

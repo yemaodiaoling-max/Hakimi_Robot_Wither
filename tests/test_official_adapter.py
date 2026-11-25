@@ -318,6 +318,29 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('前一句', forward['raw_message'])
         self.assertNotIn('qq_prior_messages', forward)
 
+    async def test_named_forward_and_quoted_nested_siblings_keep_speakers(self):
+        title = '[甲和乙的聊天记录]'
+        body = (title + '\n=== 消息 1 ===\n[消息内容] [卡片消息] 合并转发消息\n摘要: [聊天记录]\n'
+                '[发送者] 甲\n[消息类型] 卡片消息\n[卡片消息] 合并转发消息 摘要:[聊天记录]\n\n'
+                '=== 消息 2 ===\n[消息内容] 外层正文\n[发送者] 乙')
+        original = await self.adapter.translate('GROUP_MESSAGE_CREATE', self.data('CARD', content=body, message_type=102))
+        self.assertIn('甲：' + transport.cq_escape('[卡片消息] 合并转发消息'), original['raw_message'])
+        self.assertIn('转发记录正文未提供', original['raw_message'])
+        self.assertIn('乙：外层正文', original['raw_message'])
+        quoted = ('=== 消息 1 ===\n[消息内容] ' + title + '\n[消息类型] 引用消息\n[关联消息]\n'
+                  '--- 第1条 ---\n    [消息内容] [聊天记录]\n    [发送者] 甲\n'
+                  '    [消息类型] 合并转发消息\n    [关联消息]\n'
+                  '    --- 第1条 ---\n        [消息内容] 内层开头\n        [发送者] 乙\n'
+                  '    --- 第2条 ---\n        [消息内容] 内层结尾\n        [发送者] 丙\n'
+                  '--- 第2条 ---\n    [消息内容] 最后一条\n    [发送者] 丁')
+        for kind in ('GROUP_MESSAGE_CREATE','GROUP_AT_MESSAGE_CREATE'):
+            result = await self.adapter.translate(kind, self.data('QUOTE'+kind, content='我是说这个',
+                message_type=103, msg_elements=[{'content':quoted.replace('\n','\r\n')}]))
+            self.assertNotIn('qq_prior_messages', result)
+            self.assertIn('我是说这个', result['raw_message'])
+            for line in ('乙：内层开头','丙：内层结尾','丁：最后一条'):
+                self.assertEqual(result['raw_message'].count(line), 1)
+
     async def test_inline_forward_keeps_caption_speakers_and_nested_text(self):
         item = self.data(content="帮忙看看这段记录", msg_elements=[
             {"type": "node", "data": {"author": {"username": "甲", "bot": True}, "content": "先有这个条件"}},

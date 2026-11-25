@@ -54,18 +54,7 @@
       "吃": 0.25,
       "笑死": 0.25,
       "离谱": 0.25
-    },
-    "ignored_keywords": [
-      "拼多多",
-      "砍一刀",
-      "转发",
-      "签到",
-      "[CQ:json",
-      "[CQ:xml",
-      "[CQ:markdown",
-      "欢迎加入本群",
-      "来了就别走了"
-    ]
+    }
   },
   "user_bias": {
     "default_affinity": 50,

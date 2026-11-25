@@ -428,6 +428,33 @@ class AdaptiveBridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(instant)
         self.assertIn("说法", text)
 
+    async def test_ordinary_group_forward_reaches_history_and_mention_reviewer(self):
+        self.cfg['topic_bias'] = {'ignored_keywords':['转发','签到']}
+        self.cfg['always_ignored_keywords'] = ['手动屏蔽测试']
+        session = 'group:100'
+        event = {'post_type':'message','message_type':'group','group_id':100,'self_id':99,
+                 'user_id':22,'message_id':701,'sender':{'nickname':'转发人'},
+                 'raw_message':'合并转发消息\n甲：上次的签到统计\n乙：三个小组'}
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            (base/'state').mkdir()
+            inbox = base/'state/chat_history.jsonl'
+            with patch.object(bridge,'BASE_DIR',base), patch.object(bridge,'INBOX_LOG',inbox), \
+                 patch.object(bridge,'load_config',return_value=self.cfg), patch.object(bridge,'engine',self.engine), \
+                 patch.object(bridge,'RECENT_EVENT_IDS',{}), patch.object(bridge,'record_interaction'), \
+                 patch('hakimi.memory.memory_store.store'), patch.object(bridge,'enqueue_wake_beacon'):
+                await bridge.process_incoming_event(event)
+                question = dict(event,message_id=702,raw_message='[CQ:at,qq=99] 刚才的记录里有几组？')
+                await bridge.process_incoming_event(question)
+                await bridge.process_incoming_event(dict(event,message_id=703,raw_message='手动屏蔽测试'))
+                rows = [json.loads(line) for line in inbox.read_text().splitlines()]
+                self.assertEqual([r['message_id'] for r in rows],[701,702])
+                entry = {'session_key':session,'direct_messages':[rows[-1]]}
+                candidates,anchors = bridge._mention_inputs(entry,self.cfg,rows[-1]['received_at'])
+                from hakimi.bridge.conversation_judge import text_batch
+                batch = text_batch(candidates,focus_ids=[str(anchors[0]['message_id'])])
+                self.assertIn('乙：三个小组',batch[0]['text'])
+
     def test_queued_mention_survives_later_fast_group_messages(self):
         from collections import deque
         from hakimi.prompt.prompt_context import build_context
