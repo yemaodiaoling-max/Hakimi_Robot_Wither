@@ -68,9 +68,13 @@ def explicit_search(text):
 
 
 def local_decision(text):
+    if re.search(r'(?:最近|这几天|近期).{0,5}(?:大?新闻|消息)(?:有点)?(?:太多|好多|真多)',text) and not re.search(r'搜|查|哪些|有什么|[?？]',text):
+        return False
+    if re.search(r'新番|番表',text) and re.search(r'有什么|推荐|哪[些部]|本季|这季|[0-9]+月',text):
+        return True
     explicit=re.search(r'查一下|查查|搜一下|搜搜|帮.{0,5}(?:搜|查)|联网|核实|查证|辟谣|传闻',text)
     temporal=re.search(r'最新|近期|最近|今天|今日|本周|本月|目前|现在|刚刚|进展|现任',text)
-    public=re.search(r'发布|公告|价格|行情|版本|更新|新闻|政策|赛事|比分|量子|研究|突破|论文|上线|模型|天气|球队|股票|汇率',text)
+    public=re.search(r'发布|公告|价格|行情|版本|更新|新闻|政策|赛事|比分|量子|研究|突破|论文|上线|模型|天气|球队|股票|汇率|新番|番表|排期|上映',text)
     return bool(explicit or temporal and public)
 
 

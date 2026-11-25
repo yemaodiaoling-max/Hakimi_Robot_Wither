@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import sqlite3
 import time
+from urllib.parse import urlsplit
 
 from hakimi.core.context_window import select_context
 
@@ -56,6 +57,57 @@ def record(base,payload,source):
         db.execute('INSERT OR REPLACE INTO sources (session,trigger,label,url,data,expires) VALUES (?,?,?,?,?,?)',
                    (session,trigger,label,source['url'],json.dumps(data,ensure_ascii=False),time.time()+86400))
     return data
+
+
+def url_for_label(base,payload,label):
+    with database(base) as db:
+        row=db.execute('SELECT url FROM sources WHERE session=? AND trigger=? AND label=?',
+                       (*identity(payload),label)).fetchone()
+    return row[0] if row else None
+
+
+def _card(item,needles):
+    fields=('source_id','provider','evidence_level','published_at','requested_period_status',
+            'region','air_date','attribution')
+    card={key:item[key] for key in fields if item.get(key) is not None}
+    card['title']=str(item.get('title') or '')[:90]
+    text=' '.join((item.get('text') or '').split())
+    # Preserve a contiguous passage; prefer the first in a tie.
+    windows=(text[i:i+200] for i in range(0,len(text),150))
+    def score(window):
+        folded=window.lower()
+        return sum(word in folded for word in needles)
+    card['text']=max(windows,key=score,default='')
+    if not card['text'] and item['evidence_level']=='search_snippet':
+        card['evidence_level']='title_only'
+    if len(item['url'])<=180 or not card.get('source_id'):
+        card['url']=item['url']
+    else:
+        card['domain']=(urlsplit(item['url']).hostname or '')[:120]
+    card['content_available']=item['evidence_level']=='page_read'
+    return card
+
+
+def search_cards(base,payload,sources,query):
+    """Keep the full receipt locally; only send short, distinct evidence to chat."""
+    from hakimi.models.web_quality import terms
+    needles=terms(query)
+    cards=[]
+    seen=set()
+    for source in sources:
+        if source['url'] in seen:continue
+        seen.add(source['url'])
+        cards.append(_card(record(base,payload,source),needles))
+        if len(cards)==3:break
+    return cards
+
+
+def trace_cards(trace,query):
+    from hakimi.models.web_quality import terms
+    needles=terms(query)
+    sources=sorted(trace['sources'],key=lambda item:item.get('attribution')!='explicitly_cited')
+    return dict(trace,sources=[_card(item,needles) for item in sources[:3]],
+                guidance='原回复引用情况见attribution，完整链接和其他来源可用web.sources查看。')
 
 
 def commit(base,record):

@@ -43,7 +43,8 @@
     "base_url": "",
     "api_key_file": "",
     "credential_key": "search_judge",
-    "paid_search_mode": "disabled"
+    "paid_search_mode": "disabled",
+    "dsh_on_budget": false
   },
   "fallback": {
     "enabled": false,

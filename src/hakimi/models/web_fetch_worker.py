@@ -38,6 +38,9 @@ def main():
     try:
         if task['kind'] in {'search','fetch'}:
             result=native(task['kind'],task['args'],timeout)
+        elif task['kind']=='dsh_search':
+            from hakimi.models.dsh_search import search
+            result=search(task['args']['query'],task['args']['runtime'])
         elif task['kind']=='public':
             from hakimi.models.vertex_web import fetch
             url,kind,body=fetch(task['args']['url'],timeout)

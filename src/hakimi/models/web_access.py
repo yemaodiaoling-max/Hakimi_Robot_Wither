@@ -1,10 +1,12 @@
 """One policy/budget/evidence boundary for primary, fallback and pre-search."""
 from datetime import datetime,timezone
 from decimal import Decimal
+from email.utils import parsedate_to_datetime
+from html import unescape
 import json
 import re
 import time
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 import xml.etree.ElementTree as ET
 
 from hakimi.models.search_policy import network_allowed,config,current_text,explicit_search
@@ -62,6 +64,43 @@ def _rss(query,deadline,transport):
              'snippet':item.findtext('description') or '', 'provider':'bing_rss'} for item in root.findall('.//item')[:8]]
 
 
+def _news_or_encyclopedia(query,deadline,transport):
+    # These feeds return candidates; the original article can be opened separately.
+    if re.search(r'(?:^|\s)site:',query,re.I):
+        return []
+    chinese=bool(re.search(r'[\u3400-\u9fff]',query))
+    locale={'hl':'zh-CN','gl':'CN','ceid':'CN:zh-Hans'} if chinese else {'hl':'en-US','gl':'US','ceid':'US:en'}
+    news_url='https://news.google.com/rss/search?'+urlencode(dict(q=query,**locale))
+    response=_public(news_url,min(deadline,time.monotonic()+3),transport)
+    try:root=ET.fromstring(response.get('body',''))
+    except ET.ParseError:root=ET.Element('rss')
+    found=[]
+    for item in root.findall('.//item')[:12]:
+        title=item.findtext('title') or ''
+        try:date=parsedate_to_datetime(item.findtext('pubDate') or '').isoformat()
+        except (ValueError,TypeError,OverflowError):date=None
+        source=web_quality.source({'title':title,'url':item.findtext('link') or '',
+            'snippet':title,'date':date,'date_provenance':'news_feed_date' if date else 'not_available',
+            'provider':'google_news_rss'},query)
+        if source:found.append(source)
+    if found:return found
+    language='zh' if chinese else 'en'
+    origin=f'https://{language}.wikipedia.org'
+    params={'action':'query','list':'search','srsearch':query,'srlimit':5,'format':'json'}
+    response=_public(origin+'/w/api.php?'+urlencode(params),deadline,transport)
+    try:items=json.loads(response.get('body',''))['query']['search']
+    except (ValueError,TypeError,KeyError):return []
+    if not isinstance(items,list):return []
+    for item in items:
+        if not isinstance(item,dict) or not isinstance(item.get('title'),str):continue
+        title=item['title']
+        source=web_quality.source({'title':title,'url':origin+'/wiki/'+quote(title.replace(' ','_')),
+            'snippet':unescape(re.sub(r'<[^>]+>','',str(item.get('snippet') or ''))),
+            'provider':'wikipedia_search'},query)
+        if source:found.append(source)
+    return found
+
+
 def run(name,args,timeout,base,payload,*,transport=None):
     try:
         result=_run(name,args,timeout,base,payload,transport=transport)
@@ -77,30 +116,73 @@ def _run(name,args,timeout,base,payload,*,transport=None):
     transport=transport or request
     if name=='web.sources':return web_sources.lookup(base,payload,args.get('message_id'))
     if name=='web.read':
+        if re.fullmatch(r'W[1-9][0-9]*',str(args.get('url',''))):
+            url=web_sources.url_for_label(base,payload,args['url'])
+            if not url:return {'error':'WEB_UNKNOWN_SOURCE','network_used':False}
+            args=dict(args,url=url)
         cached=web_sources.cached(base,payload,args['url'])
         if cached:return web_sources.record(base,payload,cached)
     if not network_allowed(payload,base):return {'error':'WEB_DISABLED_FOR_THIS_TURN','network_used':False}
     settings=config(base)
     if not explicit_search(current_text(payload,directives_only=True,base=base)):
         settings=dict(settings,_leave_available=settings.get('priority_reserve_usd','0.0015'))
+    from hakimi.models import aux_config
+    routing = aux_config.search_routing_config(base) if aux_config.has_config(base) else {}
+    use_dsh = routing.get('dsh_on_budget') is True
+    network_timeout=32 if name=='web.search' and (settings.get('google_native') is True or use_dsh) else 15
     try:allowance=web_sources.reserve_access(base,payload,max_calls=min(8,int(settings.get('max_web_calls',6))),
-        total_seconds=min(60,float(settings.get('total_web_seconds',40))),timeout=min(float(timeout),15))
+        total_seconds=min(60,float(settings.get('total_web_seconds',40))),timeout=min(float(timeout),network_timeout))
     except (TimeoutError,ValueError):return {'error':'WEB_TURN_LIMIT','network_used':False}
     deadline=time.monotonic()+allowance
-    from hakimi.models import aux_config
-    paid_mode = aux_config.search_routing_config(base)['paid_search_mode'] if aux_config.has_config(base) else 'deepseek'
+    paid_mode = routing.get('paid_search_mode','deepseek')
     if name=='web.search':
         query=str(args.get('query') or '').strip()[:128]
         if not query:return {'error':'WEB_EMPTY_QUERY','network_used':False}
+        from hakimi.models.anime_calendar import calendar_results
+        asks_google=bool(re.search(r'(?:用|使用|请用|通过)\s*(?:谷歌|google)|(?:google|谷歌)\s*(?:搜索|一下|搜)',current_text(payload,directives_only=True,base=base),re.I))
+        def calendar():
+            return calendar_results(query,lambda url:_public(url,min(deadline,time.monotonic()+7),transport))
+        accepted=[] if asks_google else calendar()
+        google_status=None
+        use_google=settings.get('google_native') is True and not accepted
+        if use_google and deadline-time.monotonic()>2:
+            from hakimi.models import google_search
+            try:
+                google=google_search.request(query, '_leave_available' not in settings,
+                    min(deadline-time.monotonic()-.5,30),base)
+                google_status=google.get('status')
+                accepted=google.get('sources') or []
+            except (OSError,ValueError,RuntimeError):
+                google_status='gateway_unavailable'
         native={}
-        if paid_mode == 'deepseek':
-            try:native=_paid('search',{'query':query,'count':5,'need_content':True},base,settings,min(8,allowance),transport)
-            except (BudgetUnavailable,OSError):pass
+        remaining=deadline-time.monotonic()
+        limited = google_status in ('budget_unavailable','google_http_429')
+        if not accepted and not (limited and use_dsh) and paid_mode == 'deepseek' and remaining>.25:
+            try:native=_paid('search',{'query':query,'count':5,'need_content':True},base,settings,min(7,remaining),transport)
+            except BudgetUnavailable:limited=True
+            except OSError:pass
+            limited = limited or native.get('http_status')==429
         items=(native.get('data') or {}).get('results',[])
-        accepted=[]
         for item in items:
             prepared=web_quality.source(dict(item,provider='deepseek_search'),query,read=bool(item.get('content')))
             if prepared:accepted.append(prepared)
+        dsh_status=None
+        if use_dsh and limited and not accepted:
+            remaining=deadline-time.monotonic()
+            if remaining>1:
+                # Leave time for the existing public sources if DSH is unavailable.
+                try:
+                    reply=transport('dsh_search',{'query':query},min(24,remaining-min(1.5,remaining*.2)))
+                except OSError:
+                    reply={'error':'dsh_search_unavailable'}
+                for row in reply.get('sources') or []:
+                    if not isinstance(row,dict):continue
+                    try:source=web_quality.source(dict(row,provider='dsh_web_search'),query)
+                    except ValueError:continue
+                    if source:accepted.append(source)
+                dsh_status='sources_found' if accepted else str(reply.get('error') or 'no_usable_sources')
+        if not accepted and asks_google:
+            accepted=calendar()
         if re.search(r'(?:原神|genshin).*(?:版本|更新|公告|最新|version|update|latest)',query,re.I):
             official=[]
             for item in _official_news(query,deadline,transport):
@@ -109,15 +191,23 @@ def _run(name,args,timeout,base,payload,*,transport=None):
                 if prepared:official.append(prepared)
             accepted=official+accepted
         if not accepted:
-            for item in _rss(query,deadline,transport):
+            for item in _rss(query,min(deadline,time.monotonic()+4),transport):
                 prepared=web_quality.source(item,query)
                 if prepared:accepted.append(prepared)
-        result=[]
-        for item in accepted[:5]:
-            stored=web_sources.record(base,payload,item)
-            result.append(dict(stored,text=stored.get('text','')[:1300],content_available=stored['evidence_level']=='page_read'))
+        if not accepted:
+            accepted=_news_or_encyclopedia(query,deadline,transport)
+        if not accepted and deadline-time.monotonic()>.3:
+            from hakimi.models.vertex_web import _search_results
+            url='https://html.duckduckgo.com/html/?'+urlencode({'q':query})
+            page=_public(url,deadline,transport)
+            for item in _search_results(page.get('body',''),url)[:8]:
+                prepared=web_quality.source(dict(item,provider='duckduckgo_html'),query)
+                if prepared:accepted.append(prepared)
+        result=web_sources.search_cards(base,payload,accepted,query)
         return {'query':query,'results':result,'status':'sources_found' if result else 'no_usable_sources',
-                'guidance':'来源日期按published_at；search_snippet只作候选，不等于核实。需要细节再web.read。国际服公告不可当作国服。引用来源用[source_id]，如[W1]。'}
+                **({'google_status':google_status} if google_status else {}),
+                **({'dsh_status':dsh_status} if dsh_status else {}),
+                'guidance':'来源日期按published_at；仅有标题或搜索摘要时只能作线索。需要细节用web.read(url="W1")。国际服公告不可当作国服。引用来源用[source_id]，如[W1]。'}
     if name=='web.read':
         result={}
         if paid_mode == 'deepseek':

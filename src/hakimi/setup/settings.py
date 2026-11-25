@@ -346,6 +346,7 @@ def _normalise_aux(s: dict, current: dict):
     if sr.get("judge_mode") not in aux_config.SEARCH_JUDGE_MODES:
         sr["judge_mode"] = "local_rules"
     sr["paid_search_mode"] = "deepseek" if sr.get("paid_search_mode") == "deepseek" else "disabled"
+    sr["dsh_on_budget"] = sr.get("dsh_on_budget") is True
     sr["protocol"] = "gemini" if sr.get("protocol") == "gemini" else "openai_compatible"
     sr["base_url"] = _url(sr.get("base_url"), "aux.search_routing.base_url")
     sr["model"] = _model_name(sr.get("model") or "gemini-4-hydrogen", "aux.search_routing.model")

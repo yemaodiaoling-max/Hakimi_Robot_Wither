@@ -55,7 +55,7 @@
 | **QQ 主模型热切换通道** | `qq_backup` | `enabled: false`（`mode: "disabled"`） | `custom_api`（独立 OpenAI/Gemini HTTP API，支持 `fallback_model`）或 `companion_duty` |
 | **主模型故障兜底** | `fallback` | `enabled: false`（`backend: "http_api"`） | 开启后走独立 HTTP API（无需外部 CLI）或外部 `dsh` CLI |
 | **上下文与续聊筛选裁判** | `context_judge` | `mode: "heuristic"`（本地启发式，零调用） | `main_gateway`、`custom_api` 或 `dsh` |
-| **联网预搜索与付费搜索** | `search_routing` | `enabled: false`，`judge_mode: "local_rules"`，`paid_search_mode: "disabled"` | 可启用预搜索判断（`main_gateway` / `custom_api` / `dsh`）与 DeepSeek 付费搜索；关闭时手动 `web.search` 仍可用免费源 |
+| **联网预搜索与付费搜索** | `search_routing` | `enabled: false`，`judge_mode: "local_rules"`，`paid_search_mode: "disabled"` | 可启用预搜索判断（`main_gateway` / `custom_api` / `dsh`）与 DeepSeek 付费搜索；可独立开启 `dsh_on_budget`，当搜索预留不足或服务商限流时使用 DSH 账号检索（可能另计费）。默认关闭，公共来源仍可用 |
 | **每日日记兜底写手** | `diary.fallback_enabled` | `false`（仅主模型，不依赖外部兜底） | `true`（主模型不可用时调用已启用的 `fallback` 通道） |
 | **运维看门狗 / Terra 督导 / Sol 修复 / 专家求助** | `ops.*` | 4 项开关全部 `false`（零额外后台督导进程） | 逐项独立开关（`watchdog_enabled`、`terra_supervision_enabled`、`sol_repair_enabled`、`codex_help_enabled`），可选 `main_gateway`、`custom_api` 或 `codex_cli` |
 

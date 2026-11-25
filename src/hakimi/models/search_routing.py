@@ -16,7 +16,7 @@ def _prepare(payload,base,*,timeout=12,judge=None):
     text=current_text(payload,base=base)
     if re.search(r'来源|出处|哪儿查|哪里查|参考链接|source|citation',text,re.I):
         trace=web_sources.lookup(base,payload)
-        if trace.get('sources'):return {'source_trace':trace,'network_used':False}
+        if trace.get('sources'):return {'source_trace':web_sources.trace_cards(trace,text),'network_used':False}
     if not network_allowed(payload,base):return {'network_allowed':False,'network_used':False}
     from hakimi.models import aux_config
     settings=config(base)

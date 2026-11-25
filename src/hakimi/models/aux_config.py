@@ -72,6 +72,7 @@ DEFAULTS = {
         "api_key_file": "",
         "credential_key": "search_judge",
         "paid_search_mode": "disabled",
+        "dsh_on_budget": False,
     },
     "fallback": {
         "enabled": False,

@@ -80,7 +80,7 @@ def fallback_prompt(payload, base=BASE_DIR, *, allow_consult=False, consultation
             evidence=value.pop('public_web_evidence')
             sources=(evidence.get('search') or {}).get('results',[]) or (evidence.get('source_trace') or {}).get('sources',[])
             value['available_public_sources']=[{key:item.get(key) for key in ('source_id','url','title','published_at','evidence_level','region','requested_period_status')} for item in sources[:5]]
-            value['public_web_guidance']='网页正文因本轮提示预算省略；按需web.read读取available_public_sources链接。日期未知或超出所问时期时不能据此断言近期事实。禁网时只用本地web.sources。'
+            value['public_web_guidance']='网页正文因本轮提示预算省略；本轮编号或链接可用web.read读取，历史来源链接用web.sources。日期未知或超出所问时期时不能据此断言近期事实。禁网时只用本地web.sources。'
             prompt=wire(value)
         return prompt
     prompt = render(context)

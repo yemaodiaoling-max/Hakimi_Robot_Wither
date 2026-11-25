@@ -247,13 +247,18 @@ def prepare_runtime(base, installation, provider, *, images=None):
         except (ValueError, TypeError):
             raise FallbackError("FALLBACK_IMAGES_INVALID") from None
         _write_fixed(runtime, "vision_input.json", json.dumps(images, ensure_ascii=False, separators=(",", ":")))
+    write_headless_profile(runtime, build_patch(runtime, provider, images=bool(images)))
+    return runtime
+
+
+def write_headless_profile(runtime, patch):
+    """Write the reviewed bundle selection and a caller-specific headless patch."""
     manifest = {"name": "qq-dsh-headless-isolated", "private": True, "dependencies": {},
                 "dsh": {"profile": {"bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless"], "patchReload": "startup"}}}
     _write_fixed(runtime, "profiles/headless/package.json", json.dumps(manifest))
-    _write_fixed(runtime, "profiles/headless/cordis.patch.yml", json.dumps(build_patch(runtime, provider, images=bool(images)), ensure_ascii=False, indent=2))
+    _write_fixed(runtime, "profiles/headless/cordis.patch.yml", json.dumps(patch, ensure_ascii=False, indent=2))
     _write_fixed(runtime, "profiles/headless/cordis.yml", "[]\n")
     _write_fixed(runtime, "profiles/headless/pnpm-workspace.yaml", "packages: []\n")
-    return runtime
 
 
 POWERSHELL_DRIVER = r"""

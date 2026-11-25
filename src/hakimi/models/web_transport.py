@@ -5,11 +5,19 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 from hakimi import paths
 
 
 def request(kind,args,timeout):
     if timeout<.1:return {'error':'web_deadline_exhausted','billable':None}
+    if kind=='dsh_search':
+        with tempfile.TemporaryDirectory(prefix='hakimi-search-') as runtime:
+            return _request(kind,dict(args,runtime=runtime),timeout)
+    return _request(kind,args,timeout)
+
+
+def _request(kind,args,timeout):
     env=dict(os.environ)
     for key in list(env):
         if key.startswith('AGY_LLM_GATEWAY_'):env.pop(key,None)
@@ -20,7 +28,16 @@ def request(kind,args,timeout):
         process=subprocess.Popen([sys.executable,'-m','hakimi.models.web_fetch_worker'],
                                  stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=env,**options)
     except OSError:return {'error':'web_worker_unavailable','billable':False}
+    job=None
     try:
+        if os.name=='nt' and kind=='dsh_search':
+            from hakimi.models.fallback_runner import _WindowsJob
+            try:
+                job=_WindowsJob(process)
+            except Exception:
+                process.kill()
+                process.communicate()
+                raise
         output,_=process.communicate(json.dumps({'kind':kind,'args':args,'timeout':timeout}).encode(),timeout=timeout)
     except subprocess.TimeoutExpired:
         try:
@@ -29,6 +46,8 @@ def request(kind,args,timeout):
         except ProcessLookupError:pass
         process.communicate()
         return {'error':'web_deadline_exhausted','billable':None}
+    finally:
+        if job:job.close()
     if process.returncode or len(output)>4_500_000:return {'error':'web_worker_failed','billable':None}
     try:return json.loads(output)
     except ValueError:return {'error':'web_worker_invalid_result','billable':None}
