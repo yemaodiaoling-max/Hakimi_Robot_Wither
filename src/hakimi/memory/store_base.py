@@ -1,6 +1,7 @@
 """Memory store schema, scoring constants and pure text/vector helpers."""
 import hashlib
 import math
+import operator
 import os
 import re
 import struct
@@ -190,10 +191,16 @@ def _signature(values):
 def _hamming(left, right):
     if not left or not right or len(left) != len(right):
         return 10 ** 9
+    if type(left) is bytes and type(right) is bytes:
+        return (int.from_bytes(left, "little") ^ int.from_bytes(right, "little")).bit_count()
     return sum((a ^ b).bit_count() for a, b in zip(left, right))
 
 
 def _dense_cosine(blob, query):
     if not blob:
         return -1.0
+    if type(blob) is bytes and len(blob) % 4 == 0:
+        # Keep the original rounding of each product and the built-in sum.
+        values = struct.unpack(f"<{len(blob) // 4}f", blob)
+        return sum(map(operator.mul, values, query))
     return sum(value[0] * other for value, other in zip(struct.iter_unpack("<f", blob), query))

@@ -1,4 +1,5 @@
 """MemoryStore semantic vectors: pending work, status and dense candidate search."""
+import heapq
 import sqlite3
 import time
 from hakimi.memory.store_base import DENSE_THRESHOLD, _dense_cosine, _hamming, _normalise_vector, _signature, _vector_blob, chunk_text
@@ -119,8 +120,13 @@ class StoreEmbeddingMixin:
             if int(row['dim']) != dim:
                 continue
             ranked.append((_hamming(row['signature'], query_signature), row['record_id']))
-        ranked.sort()
-        selected = [record_id for _, record_id in ranked[:max(8, min(int(pool), len(ranked)))]]
+        count = max(8, min(int(pool), len(ranked)))
+        # Preserve duplicates and the record ID tie-breaker in the tuple ordering.
+        if count * 10 < len(ranked):
+            ranked = heapq.nsmallest(count, ranked)
+        else:
+            ranked.sort()
+        selected = [record_id for _, record_id in ranked[:count]]
         if not selected:
             return []
         marks = ','.join('?' for _ in selected)
