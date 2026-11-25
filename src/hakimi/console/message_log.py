@@ -9,6 +9,13 @@ from threading import RLock
 from contextlib import closing
 from pathlib import Path
 
+REQUEST_CHANNELS = {
+    'vertex': 'Vertex AI', 'antigravity': 'Antigravity CLI',
+    'argon_backup': 'Argon 备用 API', 'qq_backup_api': 'QQ 备用 API',
+    'video_claude': '视频通道（Claude）', 'video_flash': '视频通道（Flash）',
+    'video_hydrogen': '视频通道（Hydrogen）',
+}
+
 GATES = {
     "ready": "已满足唤醒条件", "insufficient_value": "本次参与评分未达到阈值",
     "no_actionable_input": "本次未发现需要接话的内容", "busy": "当时正在处理其他轮次",
@@ -254,20 +261,14 @@ def recent_messages(base, session='', scope=None):
     # The trial's outbox "model" is the configured budget route. Only the
     # successful turn's final inference request identifies the reply model.
     from hakimi.models.vertex_route import root_for
-    models = {}
+    final_requests = {}
     for audit in tail(root_for(base)/'state/task_model_routing.jsonl', 4000):
         requests = audit.get('actual_requests')
         if (not audit.get('error') and audit.get('session_key') and audit.get('trigger_id')
                 and isinstance(requests, list) and requests and isinstance(requests[-1], dict)):
-            name = requests[-1].get('model')
-            if isinstance(name, str) and name.strip():
-                models[turn(audit)] = name.strip()
-
-    def reply_model(key):
-        if not (key in boxes or key in receipts):
-            return None
-        provider = receipts.get(key, {}).get('provider') or boxes.get(key, {}).get('provider')
-        return models.get(key) if provider == 'gemini' else None
+            final = requests[-1]
+            if not final.get('error_code') and final.get('provider') != 'vertex_route':
+                final_requests[turn(audit)] = final
     links = defaultdict(list)
     def link(session, message, key):
         if session and message and key[1] and key not in links[session,str(message)]:
@@ -290,23 +291,52 @@ def recent_messages(base, session='', scope=None):
             link(key[0],routes.get(key[1]),key)
     receipt_counts=defaultdict(int)
     for r in sent:receipt_counts[turn(r)]+=1
-    def explain(key):
-        box,run,receipt = boxes.get(key,{}),runs.get(key,{}),receipts.get(key,{})
+    def explain(key, kind=None, row=None):
+        # Historical receipts can lack a turn ID. Only use that row's own evidence.
+        box,run,receipt = (boxes.get(key,{}),runs.get(key,{}),receipts.get(key,{})) if key[1] else ({},{},{})
+        if kind == 'queued':
+            box = row
+        elif kind == 'sent':
+            receipt = row
         outcome=run.get("outcome")
-        count=receipt_counts[key];expected=len(box.get('segments',[]))
+        count=receipt_counts[key] if key[1] else int(bool(receipt));expected=len(box.get('segments',[]))
         status=(f'已发送 {count}/{expected} 条' if receipt and expected>count else '已发送') if receipt else '已入队，尚未匹配发送回执' if box else OUTCOMES.get(outcome,outcome or '')
         if not status and key in active:
             status={'queued':'等待模型领取','primary_active':'主通道正在生成','fallback_active':'备用通道正在生成'}[active[key]['status']]
         if not status:status='已提交任务，尚未记录最终结果'
-        wake=box.get("wake_mode") or run.get("wake_mode")
+        wake=box.get("wake_mode") or receipt.get("wake_mode") or run.get("wake_mode")
+        if wake == '即时唤醒(被@/私聊)':
+            wake = '私聊消息' if key[0].startswith('private:') else '群内 @'
+        elif wake == 'other':
+            wake = '其他触发方式'
+        if not wake and box.get('is_proactive') is True:
+            wake = '主动发起'
         provider=receipt.get("provider") or box.get("provider") or run.get("provider")
-        model = reply_model(key)
-        actor = '回复模型：' + model if model else ('处理方：' + provider if provider else '')
-        if not model and provider == 'gemini' and (receipt or box):
-            actor += '（具体模型未确认）'
         reason=run.get("takeover_reason")
-        return " · ".join(x for x in (status,wake,("接管原因："+TAKEOVERS.get(reason,reason)) if reason else "",
-                                      actor) if x)
+        parts = [status]
+        model = channel = None
+        if receipt or box:
+            if provider == 'gemini':
+                final = final_requests.get(key, {})
+                name = final.get('model')
+                model = name.strip() if isinstance(name,str) and name.strip() else None
+                source = final.get('provider')
+                channel = REQUEST_CHANNELS.get(source) if isinstance(source, str) else None
+                channel = channel or 'Gemini（具体通道未确认）'
+            elif provider == 'dsh':
+                channel = 'DSH（备用）'
+            elif isinstance(provider, str):
+                channel = provider or None
+            parts.extend(['回复模型：'+model if model else '具体模型未确认',
+                          '调用通道：'+(channel or '未记录'), '触发原因：'+(wake or '未记录')])
+        else:
+            if wake:
+                parts.append('触发原因：'+wake)
+            if provider:
+                parts.append('处理方：'+provider)
+        if reason:
+            parts.append('接管原因：'+TAKEOVERS.get(reason,reason))
+        return ' · '.join(parts), model, channel, wake
     rows=[]
     for kind,source,stamp in (("received",incoming,"received_at"),("queued",queued[-300:],"created_at"),("sent",sent[-300:],"at")):
         for r in source:
@@ -319,6 +349,7 @@ def recent_messages(base, session='', scope=None):
             if session and row_session!=session:continue
             message=(row_session,str(r.get("message_id")))
             notes=[]
+            model = channel = wake = None
             if kind=="received":
                 speech=speech_status.get(message)
                 if speech:
@@ -326,7 +357,7 @@ def recent_messages(base, session='', scope=None):
                     label=labels.get(speech['status'],'语音处理中')
                     if speech['error']:label={'SOURCE_EXPIRED':'语音等待超过处理窗口，未识别','ADMISSION_CHANGED':'会话设置已变，未保存转写','VOICE_DISABLED':'语音识别未启用','VOICE_QUEUE_FULL':'语音队列已满，保留附带文字','NO_CLEAR_SPEECH':'未听清语音，未写入文字记忆','AUDIO_PROCESSING_FAILED':'音频处理失败，未写入文字记忆','TRANSIENT_RETRY':'临时故障，等待有界恢复','SOURCE_FORGOTTEN':'原文已删除或过期'}.get(speech['error'],'语音处理未完成')
                     notes.append('语音：'+label+(f" · {speech['duration']:.1f}秒" if speech['duration'] else ''))
-                notes.extend(explain(key) for key in links.get(message,[]))
+                notes.extend(explain(key)[0] for key in links.get(message,[]))
                 history=phases.get(message,[])
                 if history:
                     steps=[]
@@ -351,10 +382,11 @@ def recent_messages(base, session='', scope=None):
                     else:notes.append('后续状态未记录，不能据此判断仍在等待')
                 if not notes:notes.append("当前日志未记录这条消息的处理原因")
             else:
-                notes.append(explain(turn(r)))
+                detail, model, channel, wake = explain(turn(r), kind, r)
+                notes.append(detail)
             body=r.get("text") if kind!="queued" else "\n".join(map(str,r.get("segments",[])))
             rows.append(dict(kind=kind,at=at,user_id=str((r.get("reply_user_id") or row_session.split(":",1)[1]) if kind != "received" and scope == "private" else (r.get("user_id") or r.get("reply_user_id") or "")),message_id=str(r.get("message_id") or ""),session=row_session,session_name=names.get(row_session,''),actor=r.get("nickname") or r.get("user_id") or "",
-                             reply_model=reply_model(turn(r)) if kind!='received' else None,
+                             reply_model=model,reply_channel=channel,reply_trigger=wake,
                              text=str(body or "")[:12000],decision="；".join(filter(None,notes))))
     if scope == 'private':
         _attach_relation_people(state, rows)
