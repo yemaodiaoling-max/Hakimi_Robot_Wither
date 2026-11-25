@@ -59,18 +59,19 @@ def generate(prompt,coordinator,claim):
     global _SESSION,_SESSION_SIGNATURE
     from hakimi.models import vertex_route
     route=vertex_route.load(RUNTIME)
-    if route.enabled:
-        # A fresh (<=15s) read happens immediately before every real generation.
-        vertex_route.enforce_primary(RUNTIME,route=route)
+    from hakimi.models import antigravity_tasks
+    routing = claim.get('task_model_routing')
+    if not routing or 'model' not in routing:
+        routing = antigravity_tasks.routing(ROOT, claim.get('payload', {}), route)
+        if routing:
+            claim = dict(claim, task_model_routing=routing)
+    if routing and routing.get('provider') == 'antigravity':
+        return antigravity_tasks.run_chat(prompt, coordinator, claim, RUNTIME,
+                                          environment(), INTERNAL_REVIEW_TIMEOUT)
     from hakimi.models.scoped_session import ScopedSession
     if route.enabled:
-        routing = claim.get('task_model_routing')
-        if routing and 'model' in routing:
-            selected_model, routing_reason = routing['model'], routing.get('reason', '')
-        else:
-            from hakimi.models.task_routing import select
-            selected_model, routing_reason=select(ROOT,claim.get('payload',{}),route.model)
-            claim=dict(claim, task_model_routing={'model':selected_model,'reason':routing_reason})
+        vertex_route.enforce_primary(RUNTIME,route=route)
+        selected_model = routing['model']
         args=[str(Path.home()/'.local/bin/agy'),'--input-format','stream-json',
               '--output-format','stream-json','--model',selected_model,'--effort','low',
               '--disable-slash-commands','--print-timeout','420s']
@@ -193,36 +194,49 @@ def _agent_lane():
                 time.sleep(1);continue
         route=vertex_route.load(RUNTIME)
         vertex=route.enabled
-        try:
-            status=route.check()
-        except Exception:
-            if vertex:
+        from hakimi.models import antigravity_tasks
+        options = antigravity_tasks.settings(ROOT)
+        hint = coordinator._poll_hint() if options else {}
+        selection = (antigravity_tasks.routing(ROOT, hint['payload'], route)
+                     if hint.get('status') == 'queued' else None)
+        claim_target = None
+        if selection and selection.get('provider') == 'antigravity':
+            from hakimi.models.provider_health import availability
+            control = availability(RUNTIME)
+            if control.get('user_paused') or control.get('mode') == 'dsh':
                 time.sleep(1);continue
-            status={}
-        if vertex and status.get('blocked'):
-            # Skip claiming completely; the existing dsh lane takes over.
-            # The gate records whether a user pause already existed.
-            time.sleep(1);continue
+            # Bind the budget-independent claim to the exact classified event.
+            claim_target = hint['trigger_id']
+        else:
+            try:
+                status = route.check()
+            except Exception:
+                status = {'blocked': vertex}
+            if vertex and status.get('blocked'):
+                if (options.get('reflection') and not os.environ.get('HAKIMI_TURN_LANE')
+                        and not coordinator.any_lane_active()):
+                    _idle_review_tick(RUNTIME)
+                time.sleep(1);continue
         from hakimi.models.model_trial import tick as model_trial_tick
         main_idle = not os.environ.get('HAKIMI_TURN_LANE') and not coordinator.any_lane_active()
         if main_idle:
             model_trial_tick(RUNTIME)
-        claim=coordinator.claim_primary()
+        claim=coordinator.claim_primary(claim_target) if claim_target else coordinator.claim_primary()
         if not claim:
             if main_idle:
                 _idle_review_tick(RUNTIME)
             time.sleep(1);continue
         backoff=0
+        routing=None
         review=isinstance(claim.get('payload'),dict) and isinstance(claim['payload'].get('internal_review'),dict)
         try:
-            selected_model = None
-            if vertex:
-                from hakimi.models.task_routing import select
-                selected_model, routing_reason = select(ROOT, claim.get('payload', {}), route.model)
-                claim = dict(claim, task_model_routing={'model': selected_model, 'reason': routing_reason})
+            routing = antigravity_tasks.routing(ROOT, claim.get('payload', {}), route)
+            selected_model = routing['model'] if routing else None
+            if routing:
+                claim = dict(claim, task_model_routing=routing)
             from hakimi.models.search_routing import prepare as prepare_search
             claim['payload']['_web_context'] = prepare_search(claim['payload'],RUNTIME,timeout=min(12,max(.1,claim['deadline']-time.time()-10)))
-            prompt=render_prompt(claim['payload'],RUNTIME,claim,cli_label=command,wait_after_turn=False,native=vertex,selected_model=selected_model)
+            prompt=render_prompt(claim['payload'],RUNTIME,claim,cli_label=command,wait_after_turn=False,native=bool(routing),selected_model=selected_model)
             activate_context(claim['payload'],RUNTIME,claim=claim)
             result=generate(prompt,coordinator,claim)
             reason=_failure_reason(result,vertex)
@@ -258,7 +272,8 @@ def _agent_lane():
                 backoff=60 if reason=='gateway_unavailable' else 10
         except Exception as exc:
             detail = getattr(exc, 'carbon_failure', {})
-            reason = detail.get('code') or ('gateway_unavailable' if vertex else 'model_error')
+            reason = ('antigravity_unavailable' if (routing or {}).get('provider') == 'antigravity'
+                      else detail.get('code') or ('gateway_unavailable' if vertex else 'model_error'))
             if review:
                 completion=_finish_review(coordinator,claim,RUNTIME,success=False)
                 log(component='gemini_review',error=type(exc).__name__,completion=completion,usage=getattr(exc,'usage',{}))

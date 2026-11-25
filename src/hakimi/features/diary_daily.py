@@ -59,7 +59,18 @@ def generate(day):
     prompt += '\n以下是有时间与原文出处的真实材料，匿名使用，区分当日与往日回想；勿编造事件或身份隐私。无适合材料时明确写猫系想象。参考最近日记，避免重复主题、意象与套话：\n' + json.dumps(diary_material(day), ensure_ascii=False)
     health=availability(ROOT);dsh=health.get('mode')=='dsh' or health.get('fast') and health.get('mode')!='gemini'
     provider='gemini';raw=None
-    if not dsh:
+    from hakimi.models import antigravity_tasks
+    model = antigravity_tasks.settings(ROOT).get('diary')
+    if model and health.get('mode') != 'dsh' and not health.get('user_paused'):
+        try:
+            raw = antigravity_tasks.diary_text(model, prompt, 105)
+            parse(raw)
+            provider = 'antigravity/' + model
+        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+            from hakimi.ops.cloud_service import log
+            log(component="diary_primary", provider="antigravity", model=model, error=type(exc).__name__)
+            raw = None
+    elif not model and not dsh:
         folder(ROOT).mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='diary_write_',dir=folder(ROOT)) as work:
             args=[str(Path.home()/'.local/bin/agy'),'--input-format','stream-json','--output-format','stream-json',

@@ -48,3 +48,9 @@ hakimi config show config.json --where runtime
 ## 人设
 
 人设与全部提示词在 `src/hakimi/persona/`（见该目录的 README）。在 runtime 目录放一个同名文件即可覆盖包内版本，例如 `root/official_test_runtime/gemini_persona.txt`（重启 `hakimi-agent` 生效）。风格样本 `style_examples.jsonl` / `dsh_style_examples.jsonl` 默认为空：放进 root 后，`hakimi setup apply` 会把它们复制到 runtime；只加入你自己有权使用的对话样本。
+
+## 可选的 Antigravity 任务路由
+
+Linux 实例可在 `HAKIMI_ROOT/antigravity_tasks.json` 分别设置 `complex`（双模型路由判定的复杂 QQ 问题）、`reflection`（定期人物记忆反思）和 `diary`（日记正文）。值取运行服务账号执行 `agy models` 时列出的完整模型 ID，包含推理档位。省略的任务沿用原有配置。使用此功能需要同一 Linux 用户已登录的 Antigravity CLI，且其 ACP 接口支持模型和思考档位选择。
+
+聊天和反思沿用 QQ 工具及消息所有权检查。可在 `state/task_model_routing.jsonl` 核对实际服务和模型。日记归档在 `provider` 中记录写作来源。删除实例配置即可恢复原路由。

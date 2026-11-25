@@ -257,6 +257,11 @@ def _vertex_budget_blocked(base, now):
     """Only the Gemini-only reflection is gated; Terra work is unaffected."""
     try:
         from hakimi.models import vertex_route
+        from hakimi.models.antigravity_tasks import settings
+        if settings(base).get('reflection'):
+            from hakimi.models.provider_health import availability
+            health = availability(base)
+            return bool(health.get('user_paused') or health.get('mode') == 'dsh')
         route = vertex_route.load(base)
         if not route.enabled:
             return False
