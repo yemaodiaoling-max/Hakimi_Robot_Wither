@@ -2,14 +2,14 @@
 
 **简体中文** · [English](README.en.md)
 
-一只住在 QQ 群、B 站和你电脑桌面上的猫系 AI 同伴。三种形态共用**同一个记忆内核**：在 QQ 群里聊过的事、在 B 站看过的视频、桌宠陪你写代码的经历，都会成为同一只哈基米的记忆，它会在下一次聊天时自然地想起来。
+一只住在 QQ 群、B 站和你电脑桌面上的猫系 AI 同伴。三种形态共用**同一个记忆内核**：在 QQ 群里聊过的事、在 B 站看过的视频、桌宠陪你写代码的经历，都会成为同一只哈基米的记忆，并在下次聊到相关话题时自然想起来。
 
 - ⚡ **单 API 开箱即用，也可按需拆分多 API / 多 Agent**：开源版只需填写**一个 API Key**（支持 Google Gemini、Gemini 兼容或任意 OpenAI 兼容接口）即可跑通完整功能；备用模型、异步复盘、上下文筛选、联网预搜索与运维督导均支持在设置面板独立配置，默认全部关闭或复用主网关。
-- 🐱 **会挑时机说话的群友**：被 @ 立即回应，其它时候先读上下文再决定要不要接话；群里冷场时会主动抛话题，热闹时懂得退让。
-- 🧠 **长期记忆与关系网**：记得每个群友说过的话、外号和梗，给每个人记“小本子”，好感与亲近度随互动变化；每晚写一篇私有日记。
-- 📺 **自己刷 B 站**：按兴趣看推荐视频、蹲守指定直播间，看过的内容会变成和 QQ 群共享的谈资。
-- 🖥️ **桌面宠物**：趴在 Windows 桌面上看屏幕吐槽、语音聊天、在你确认后帮你操作电脑。
-- 🔐 **密钥只在你的服务器上**：所有模型请求都经过本机网关，统一记账、可设月度花费上限；辅助 API 密钥单独加密保存。
+- 🐱 **会挑时机、会合并追问的群友**：被 @ 或私聊立即回应并短暂收齐补充追问；支持展开嵌套转发消息与智能引用；其它时候先读上下文再决定要不要接话，冷场时主动抛话题，热闹时懂得退让。
+- 🧠 **分层记忆内核与分级遗忘**：原文存储 + 全文检索（FTS5）+ 可选本地稠密向量语义检索（`bge-small-zh-v1.5`），按群隔离、维护人物小本子与关系图谱、异步复盘并每晚写私有日记；过期的跨端视频记忆按深度分级到期并物理清理。
+- 📺 **自己刷 B 站并与 QQ/桌宠联动**：按兴趣刷推荐视频、盯守指定直播间；看片经历经自传快照注入共享记忆内核，仅在聊到相关内容时按话题召回（无关群聊**零额外提示词开销**），实时状态供桌宠与 QQ 询问读取。
+- 🖥️ **桌面宠物**：趴在 Windows 桌面上看屏幕吐槽、语音对话、在你确认后帮你操作电脑，实时同步 B 站近况，支持固定交接文件的长班次轮转机制。
+- 🔐 **密钥只在你的服务器上**：所有主模型请求经本机 HTTPS 网关统一转发、记账与限额；辅助 API Key 与 B 站 Cookie 单独加密保存。
 
 ## 目录
 
@@ -24,26 +24,50 @@
 
 | 模块 | 做什么 | 运行在 |
 |---|---|---|
-| **记忆内核** `core`（必装） | 长期记忆（全文检索，可选语义检索）、关系网与好感度、日记、信息面板、设置面板、本地模型网关 | Linux 服务器（也可在 Windows 上运行） |
-| **QQ 机器人** `qq` | 走 QQ 官方机器人通道：群聊/私聊、被 @ 即答、冷场主动聊天、表情包、公式排版成图、看图看视频、可选 AI 绘图、每日日记 | 同上 |
-| **视频机器人** `video` | 自己刷 B 站推荐、盯指定直播间、可选发弹幕和评论，看过的内容写进共享记忆 | Linux 服务器（需要 `ffmpeg`） |
-| **桌宠** `pet` | Windows 桌面宠物：看屏幕吐槽、语音对话、帮你操作电脑，经历同步进记忆 | Windows 电脑 |
+| **记忆内核** `core`（必装） | 长期记忆（SQLite + FTS5，可选 `bge-small-zh-v1.5` 语义检索）、关系图谱与好感度、异步复盘与日记、信息/设置面板、本地模型网关 | Linux 服务器（也可在 Windows 上运行） |
+| **QQ 机器人** `qq` | 官方 QQ 通道（含 OneBot 适配）：群聊/私聊、追问合并、嵌套转发展开、冷场主动发言、可追溯联网检索、表情包、公式排图、音视频与图片理解、可选 AI 绘图与本地 QQ 语音、每日日记 | 同上 |
+| **视频机器人** `video` | `bili_companion`：按兴趣刷 B 站推荐、蹲守优先直播间、可选发弹幕和评论；生成带校验的观片自传与实时在场状态并入共享记忆 | Linux 服务器（需要 `ffmpeg`） |
+| **桌宠** `pet` | Windows 桌面宠物：看屏幕吐槽、语音对话、确认后代操作电脑、实时查看 B 站近况，并通过固定交接文件维持长时值守与记忆同步 | Windows 电脑 |
 
 ## 架构
 
+### 系统拓扑与同魂联动
+
 ```
-                 ┌─────────────── 记忆内核 core ───────────────┐
-                 │ 记忆库 memory.sqlite3 · 关系网 · 日记       │
-  QQ 机器人 ───▶ │ 信息面板 / 设置面板 (:18768)                │ ◀─── 桌宠（Windows，本机或 SSH）
-                 │ 本地模型网关 (:18765) ──▶ Gemini / OpenAI   │
-                 └───────────────▲───────────────────────┬─────┘
-                                 │ 每 30 分钟交换摘要     │ 可选辅助扩展（aux_config.json，默认关/复用网关）
-                           视频机器人（B 站）            └─▶ 独立复盘/备用 HTTP API · 可选 CLI Agent
+                       ┌──────────────────── 记忆内核 core ────────────────────┐
+                       │  memory.sqlite3 (FTS5 + 可选 bge-small-zh 向量)       │
+  QQ 机器人 (qq) ────▶ │  关系图谱 · 异步复盘 (curation) · 私有日记            │ ◀─── 桌宠 (pet，Windows 本机或 SSH)
+  (官方通道 / OneBot)  │  信息与设置面板 (:18768，仅回环 + 令牌)               │      看屏幕 · 语音 · 读近况 · 固定交班
+                       │  本地 HTTPS 网关 (:18765，ledger) ─▶ Gemini / OpenAI  │
+                       └────────────────────▲────────────────────────────┬─────┘
+                                            │ hakimi-memory-bridge.timer │ 可选扩展（aux_config.json /
+                                            │ 每 30 分钟双向校验交换摘要   │         antigravity_tasks.json）
+                                 视频机器人 (video，bili_companion)        └─▶ 独立 HTTP API · 可选 CLI Agent
+                                 ├─ 输出至内核：自传手记 (仅话题召回 + 分级清理) + 实时 presence
+                                 └─ 接收自内核：去私聊脱敏后的 QQ/桌宠兴趣线索（严禁 self:bilibili 自回环）
 ```
 
 - **同一套代码，纯配置区分**：下载开源版直接运行，与开启多路高可用、多 Agent 协作的生产实例使用的是同一套核心代码；所有行为差异和独立端点都在**实例目录**（默认 `~/hakimi-data`）中通过配置文件开启。
-- **核心与视频包结构**：主程序是可安装的 Python 包 `hakimi`（`src/hakimi/`），视频模块是同仓库下的 `bili_companion/` 包。
-- **开箱只需一个上游 API**：所有核心调用经本机网关 `https://127.0.0.1:18765` 转发，支持 Google Gemini、Gemini 兼容端点或任何 OpenAI Chat Completions 兼容接口（如 DeepSeek、OpenRouter、自建网关等）。
+- **跨端自传桥与严格控本**：
+  - 视频端通过 SHA-256 校验的 JSON 快照输出观片/直播自传（同步为 `self:bilibili` 共享记忆，仅在聊天话题真正相关时触发检索召回，普通无关 QQ 群聊不注入、不额外消耗 token）与轻量实时 `presence.json`（QQ 仅在主人交互或被主动问及近况时注入超短状态；桌宠自动携带完整近况）。
+  - 分级遗忘与物理删盘：视频与直播记忆按观片深度/互动程度设定差异化过期时间（高兴趣 45–60 天、普通 14 天、低兴趣 5 天，默认上限 240 条），到期或超限后连同 FTS 索引、向量与孤立图谱边一并物理删除；`bili_companion` 侧同步按日清理陈旧证据与已确认队列。
+- **开箱只需一个上游 API**：所有核心调用经本机网关 `https://127.0.0.1:18765` 转发并记录于 `gateway_ledger.sqlite3`，支持 Google Gemini、Gemini 兼容端点或任何 OpenAI Chat Completions 兼容接口（如 DeepSeek、OpenRouter、自建网关等）。
+
+### 代码分层与依赖方向
+
+主包 `hakimi`（`src/hakimi/`）按**七层单向依赖**组织，下层不依赖上层；可通过 `hakimi arch --check` 与 `tests/test_architecture.py` 进行静态 AST 检查：
+
+| 层级 | 包含包 / 模块 | 职责与说明 |
+|---|---|---|
+| **L6 入口与运维** `entry` | `ops`、`console`、`setup`、`config`、`modules`、`__main__`、`architecture`、`tools.qq_cli` | systemd 服务入口、健康巡查与最小修复、信息面板、设置面板、命令行入口与分层检查 |
+| **L5 编排** `orchestration` | `bridge`、`transport`、`curation`、`features` | 轮次调度与追问合并（含可选 C++17 扩展 `bridge/followup.cpp`）、官方 QQ/OneBot 通道、异步记忆与人物复盘、日记/旧空间/专家求助 |
+| **L4 模型与检索** `models` | `models`、`web` | 多档模型路由与预算、主/热备/兜底/Antigravity 会话；联网公开搜索与抓取、原生 Google Grounding 计费接入、可选 DSH 搜索与来源归档 |
+| **L3 提示词** `prompting` | `prompt` | 上下文压缩与预算分配、分群语气档案、工具目录与按需筛选、门控注入 B 站经历与在场状态 |
+| **L2 能力** `capabilities` | `tools`、`voice` | 多模型 AI 绘图、Markdown/TeX 公式排图、表情包、B 站与 QQ 小程序抽帧、投喂、可选本地 CPU 语音识别与合成 |
+| **L1 原语与数据** `data` | `chat`、`memory`、`social`、`gateway` | 跨层共用的消息原语（气泡、@、引用、媒体/文件许可、配额、发送记录）、`MemoryStore` 与自传同步/清理、关系图谱与跨群身份、网关账本 |
+| **L0 基础** `foundation` | `core`、`persona`、`defaults`、`paths`、`_legacy` | `root` / `runtime` / `base` 三级路径解析、JSON 读写、时间、Fernet 密钥、人设文本及旧模块路径兼容别名 |
+
+视频机器人位于同仓库 `bili_companion/`，Windows 桌宠位于 `desktop_pet/`（根目录 `desktop_pet_agent.py` 为兼容入口）。
 
 ## 单 API 开箱与独立模块开关
 
@@ -59,46 +83,46 @@
 | **每日日记兜底写手** | `diary.fallback_enabled` | `false`（仅主模型，不依赖外部兜底） | `true`（主模型不可用时调用已启用的 `fallback` 通道） |
 | **运维看门狗 / Terra 督导 / Sol 修复 / 专家求助** | `ops.*` | 4 项开关全部 `false`（零额外后台督导进程） | 逐项独立开关（`watchdog_enabled`、`terra_supervision_enabled`、`sol_repair_enabled`、`codex_help_enabled`），可选 `main_gateway`、`custom_api` 或 `codex_cli` |
 
-> 普通用户保持默认配置即可运行全部聊天、记忆、日记、搜图、公式排版等核心体验；如需给某一项挂单独的低价模型或外部 CLI，只需在设置面板展开 **「高级与独立 API」** 填写并保存，配置格式可通过 `hakimi config check` 校验。详细配置键见 [docs/configuration.md](docs/configuration.md)。
+> 普通用户保持默认配置即可运行全部聊天、记忆、日记、搜图、公式排版等核心体验；Linux 环境还可在 `<实例目录>/antigravity_tasks.json` 为复杂 QQ 问答（`complex`）、人物记忆反思（`reflection`）与日记（`diary`）可选配置 Antigravity CLI 路由。如需给某一项挂单独的低价模型或外部 CLI，在设置面板展开 **「高级与独立 API」** 填写并保存即可，配置格式可通过 `hakimi config check` 校验。详细配置键见 [docs/configuration.md](docs/configuration.md)。
 
 ## 功能一览
 
-**对话**
-- 被 @ 或私聊即时回应；平时积累上下文、给每轮发言打分后再决定是否插话，活跃群里主动退让。
-- 冷场时按时间窗口主动开启话题。
-- 按用户限流：同一个人 30 分钟内最多触发 7 轮回复，防刷屏、控成本。
-- 备用通道、独立复盘 API、上下文筛选裁判、联网预搜索与运维督导均**默认关闭或复用主网关**，开箱无需额外 API 或 CLI；需要高可用时按上表按需启用。
+**对话与调度**
+- 被 @ 或私聊即时回应，并在短暂缓冲窗口内通过可选 C++17 分类器/规则引擎合并同一发言人的连续追问与补充；支持逐层展开 QQ 嵌套转发消息。
+- 平时积累上下文、给每轮发言打分后再决定是否插话，活跃群主动退让；发送前自动检查插话情况并智能附带目标引用；冷场时按配置窗口主动开启话题。
+- 按用户限流：同一个人滚动 30 分钟内最多触发 7 轮回复（主/备通道共用），防刷屏、控成本。
 
-**记忆与关系**
-- 原文存储，全文 + 可选语义混合检索；按群隔离，群聊里不会说出私聊内容。
-- 人物小本子、好感/亲近评分（来源分开记录）、互动熟悉度、记忆图谱。
-- 回复结束后异步复盘，整理事件卡和人物印象；每两小时挑几位成员做内部复盘（不发群消息）。
-- 每晚写一篇私有日记并配图，可导出 PDF。
+**记忆、关系与日记**
+- 原文存储，SQLite FTS5 + 可选本地稠密向量（`bge-small-zh-v1.5`）混合检索；按群严格隔离，群聊里绝不泄露私聊内容。
+- 人物小本子、好感/亲近评分（来源分开记录）、互动熟悉度与记忆图谱；`hakimi.curation` 在回复窗口结束后异步整理事件卡和人物印象，并每两小时安静复盘部分成员。
+- B 站观片/直播自传与共享记忆打通，按相关度自动唤起“B站亲历”并按梯度过期物理清理。
+- 每晚 22:30（纽约时间）写一篇私有日记并支持配图、LaTeX 精美排版、PDF 导出与已验证主人私聊送达。
 
-**多媒体**
+**联网检索与来源追溯**
+- 公开网页搜索与受限 HTTPS 分页读取（含新闻/百科补救与番剧日历），不绕过验证码或付费墙，并在触发禁网约束时严格遵守。
+- 每轮检索结果生成与会话绑定的不可变来源快照（`[W1]`、`web.sources`），群友后续引用回复时可离线回溯真实引用依据。
+- 可选配置原生 Google Search Grounding 计费接入、DeepSeek 付费搜索及 `dsh_on_budget` 降级通道。
+
+**多媒体与语音**
 - 看图（只读本轮授权的图片）、按需抽帧观看 B 站与 QQ 小程序视频。
-- Markdown/TeX 公式在本地排版成图片发送。
-- 按语境从图库挑表情包，收藏群友的表情。
-- 可选 AI 绘图：默认关闭，在面板「绘图设置」里填写自己的图像模型地址和 Key，并设置每日/每月花费上限。
+- Markdown/TeX 公式在本地排版成图片发送；按语境挑表情包并收藏群友表情。
+- 可选 AI 绘图：默认关闭，在面板「绘图设置」配置模型列表与按日/月预算上限后启用。
+- 可选 QQ 语音（`hakimi.voice`，默认关闭）：支持本地 CPU 语音转写（仅本轮会话可见，原文不入共享长期记忆）与明确请求时的本地语音合成/短哼唱（仓库不含他人音色样本，详情见 [docs/voice.md](docs/voice.md)）。
 
-**面板**（只监听本机，令牌保护，通过 SSH 隧道访问）
-- 关系面板（关系图、人物、跨群的好感与档案）、消息日志、旧群与成员匹配、视频活动、复盘变化、调用预算、绘图设置。
-- 设置面板：模块开关、模型与 Key、主人与人设、QQ 机器人、B 站登录、桌宠连接，以及默认折叠的 **「高级与独立 API」**，保存后自动写配置并重启相关服务。
-
-**运维**
-- 本地模型网关：统一记账，按单价估算花费，可设月度上限；达到上限后自动切换已配置的备用通道或暂停看视频。
-- 可选服务看门狗、Terra 风格评价、Sol 最小修复与专家求助队列（全部默认关闭，可在面板或 `aux_config.json` 单独开关与指定后端）。
+**面板与运维**（面板只监听本机 `127.0.0.1:18768`，令牌保护，通过 SSH 隧道访问）
+- 关系面板（图谱、人物、跨群档案）、消息日志（活动页同步展示回复通道、触发原因与模型档位）、旧群与成员匹配、视频活动、复盘变化、调用预算、绘图设置与设置面板 `/setup.html`。
+- 本地模型网关统一记账与月度花费拦截；可选健康看门狗、Terra 督导、Sol 最小修复与专家求助队列默认全关，可按需开启。
 
 完整清单与每项功能的开关见 [docs/features.md](docs/features.md)。
 
 ## 快速开始（Linux 服务器）
 
-需要 Python 3.12+ 和 git；视频模块另需 `ffmpeg`。已在 Ubuntu / Debian 上测试。
+需要 Python 3.12+ 和 git；视频模块另需 `ffmpeg`。已在 Ubuntu / Debian 上测试（安装 `hakimi` 时若存在 C++17 编译器会自动编译加速扩充追问模块 `_followup_rules`，缺少编译器时自动无感退回纯 Python 实现）。
 
 ```bash
 git clone https://github.com/yemaodiaoling-max/Hakimi_Robot_Wither.git hakimi && cd hakimi
 deploy/install.sh --modules qq,video,pet      # 只要 QQ 机器人就写 --modules qq
-# 想要语义检索（约 500 MB）可以加 --vector
+# 想要本地语义检索（约 500 MB）可以加 --vector
 ```
 
 安装脚本会创建虚拟环境、实例目录（默认 `~/hakimi-data`）、本地网关证书和面板令牌，并以 systemd 用户服务启动**网关**和**面板**。脚本本身不会询问任何密钥。
@@ -135,7 +159,7 @@ python -m venv .venv; .venv\Scripts\pip install -e .[pet]
 .venv\Scripts\python desktop_pet\pet_app.py
 ```
 
-机器人装在同一台 Windows 电脑上时选“本机”，桌宠会直接在本机启动后端；装在服务器上时选“SSH”，桌宠通过一条常驻的 SSH 连接和服务器通信。桌宠对电脑的每一个操作（打开软件、运行命令、键鼠操作）都会先弹出确认按钮，你点「允许」后才会执行。
+机器人装在同一台 Windows 电脑上时选“本机”，桌宠会直接在本机启动后端；装在服务器上时选“SSH”，桌宠通过一条常驻的 SSH 连接和服务器通信。桌宠对电脑的每一个操作（打开软件、运行命令、键鼠操作）都会先弹出确认按钮，你点「允许」后才会执行；长期值守时可通过 `desktop_pet\pet_cli.py bili-status` 查看 B 站近况，并通过固定交接文件与 `rotate` / `handoff-sync` 命令实现低上下文轮班交接。
 
 ## 自定义人设与身份
 
@@ -167,6 +191,8 @@ python -m venv .venv; .venv\Scripts\pip install -e .[pet]
 
 ```bash
 hakimi modules                 # 已安装 / 已启用的模块（受 aux_config.json 与模块开关共同控制）
+hakimi arch                    # 查看七层代码架构分布与模块规模
+hakimi arch --check            # 静态检查导入方向（防止下层逆向依赖上层）
 hakimi setup status            # 已配置的项目（不显示密钥）
 hakimi gateway status          # 模型网关：上游、模型映射、本月请求数与估算花费
 hakimi gateway models          # 列出上游 Key 可用的模型
@@ -190,27 +216,29 @@ systemctl --user restart 'hakimi-*.service'
 
 - **密钥只保存在你的服务器上**：主模型 Key 保存在网关目录（权限 0600），各模块进程拿不到；QQ AppSecret 与设置面板填入的各路独立辅助 API Key（`credentials.fernet` 中的 `provider` 与 `aux` 段）均用 Fernet 加密保存在 `~/.config/hakimi/`；B 站 Cookie 加密保存在视频模块的私有目录。面板只显示“已保存/未填写”，不回显任何值。
 - **聊天记录、记忆库、日记都在实例目录里**，不在代码仓库中；`.gitignore` 已排除这些目录，请不要把实例目录提交到 git。
-- **隐私边界**：记忆按群隔离，群聊里不会引用私聊内容；桌宠看到你在和别人私聊时，只陪你吐槽，不写进共享记忆；跨模块只交换整理过的摘要，不复制私聊原文和账号信息。
+- **隐私边界**：记忆按群隔离，群聊里不会引用私聊内容；桌宠看到你在和别人私聊时只陪你吐槽，既不写进共享记忆也不写入交接摘要；跨模块只交换经过脱敏校验的摘要与自传，绝不复制他人私聊原文与真实账号信息。
 - **面板安全**：只监听 `127.0.0.1`，需要令牌，写操作校验同源。
 
 ## 开发与测试
 
 ```bash
-python tests/run_tests.py                       # 主项目测试（tests/known_stale.py 里的用例按预期失败处理）
+python -m hakimi arch --check                    # 校验七层模块依赖方向
+python tests/run_tests.py                        # 主项目测试（tests/known_stale.py 里的用例按预期失败处理）
 cd bili_companion && PYTHONPATH=src python -m unittest discover -s tests
 ```
 
-- 代码结构见 [架构说明](docs/architecture.md)；新功能请在 `src/hakimi/features/registry.py` 登记，再用 `hakimi features --markdown` 更新功能清单。
+- 代码结构与分层契约见 [架构说明](docs/architecture.md)；新功能请在 `src/hakimi/features/registry.py` 登记，再用 `hakimi features --markdown` 更新功能清单。
 - 测试只使用脱敏数据和假身份（`tests/fixtures/`），不会发送任何真实消息或模型请求。
-- 目前主项目测试里有少量已知失败用例；提交改动时请确认没有新增失败。
+- 目前主项目测试里有少量已知失败用例；提交改动时请确认没有新增失败与越层依赖。
 - 欢迎提 Issue 和 Pull Request。
 
 ## 文档
 
 - [模块说明](docs/modules.md)：每个模块装什么、启动哪些服务、互相怎么共享记忆
+- [架构说明](docs/architecture.md)：七层架构、导入方向与核心目录映射
 - [模型网关](docs/gateway.md)：模型映射、单价与月度上限、代理、兼容地址
-- [配置说明](docs/configuration.md) · [架构说明](docs/architecture.md) · [功能一览](docs/features.md)
-- [记忆](docs/memory_operation.md) · [日记](docs/diary_operation.md) · [数学排版](docs/math_tool.md) · [备用模型](docs/fallback_operation.md) · [语音](docs/voice.md)
+- [配置说明](docs/configuration.md) · [功能一览](docs/features.md) · [联网搜索路由](docs/search-routing.md)
+- [记忆与自传联动](docs/memory_operation.md) · [日记](docs/diary_operation.md) · [数学排版](docs/math_tool.md) · [B 站视频观察](docs/bilibili_video_operation.md) · [备用模型](docs/fallback_operation.md) · [语音](docs/voice.md)
 - [人设与提示词](src/hakimi/persona/README.md)：改名字、改性格、加风格样本
 - 视频模块：[bili_companion/README.md](bili_companion/README.md)
 

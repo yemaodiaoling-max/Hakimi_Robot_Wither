@@ -2,14 +2,14 @@
 
 [简体中文](README.md) · **English**
 
-A cat-like AI companion that lives in your QQ groups, on Bilibili and on your desktop. All three forms share **one memory core**: what it chatted about in a QQ group, the videos it watched on Bilibili and the evenings it spent on your desktop while you coded all become memories of the same Hakimi, and it brings them up naturally the next time you talk.
+A cat-like AI companion that lives in your QQ groups, on Bilibili, and on your Windows desktop. All three embodiments share **one memory core**: conversations in QQ groups, videos watched on Bilibili, and hours spent on your desktop become memories of the same Hakimi, surfacing naturally whenever a matching topic comes up.
 
-- ⚡ **Runs out of the box with one API key—or splits roles across many**: enter **one single API key** (Google Gemini, Gemini-compatible, or any OpenAI-compatible endpoint) for the full core experience; fallback responders, post-reply reviews, context judges, search pre-routing and ops supervision are all off by default or reuse the main gateway, and can each be enabled and pointed at independent APIs or CLIs.
-- 🐱 **A group member with timing**: answers right away when @-mentioned; otherwise it reads the room before deciding whether to join in, starts topics when the group goes quiet and holds back when it is busy.
-- 🧠 **Long-term memory and a social graph**: remembers what each member said, their nicknames and running jokes, keeps a notebook on everyone with affinity and closeness that change over time, and writes a private diary every night.
-- 📺 **Watches Bilibili on its own**: picks recommended videos by interest and keeps an eye on a live room you choose; what it watched becomes something to talk about in QQ.
-- 🖥️ **Desktop pet**: sits on your Windows desktop, comments on your screen, chats by voice and operates your computer after you confirm.
-- 🔐 **Your keys stay on your server**: every model request goes through a local gateway with one cost ledger and an optional monthly spending cap; auxiliary API keys are stored separately and encrypted.
+- ⚡ **Runs out of the box with one API key—or splits roles across many**: enter **one single API key** (Google Gemini, Gemini-compatible, or any OpenAI-compatible endpoint) for the full core experience; hot-backup routes, fallback responders, post-reply reviews, heuristic/LLM judges, search pre-routing, and ops supervision are all disabled by default or reuse the main gateway, and can each be pointed at independent APIs or CLIs.
+- 🐱 **A timing-aware group companion**: replies immediately to @-mentions and DMs while briefly merging rapid follow-ups (optional C++17 native classifier); unpacks nested forwarded messages and auto-quotes across intervening chat; reads context before joining group banter, sparks topics when quiet, and yields when busy.
+- 🧠 **Layered memory core & tiered forgetting**: verbatim storage + SQLite FTS5 + optional exact local dense retrieval (`bge-small-zh-v1.5`), strict per-group isolation, per-person notebooks & social graph, async post-reply curation, nightly illustrated private diary, and tiered physical pruning for aging Bilibili episodes.
+- 📺 **Watches Bilibili autonomously & bridges into QQ/pet**: picks recommended videos by interest and monitors a priority live room; exports SHA-256-verified autobiography snapshots recalled only when QQ topics genuinely match (**zero extra tokens on unrelated QQ chat**), plus live presence status synced to desktop pet and gated QQ queries.
+- 🖥️ **Desktop pet**: sits on your Windows desktop, comments on your screen, chats by voice, operates your PC after explicit confirmation, reads live Bilibili status, and supports fixed-file shift handoffs for low-cost long-running sessions.
+- 🔐 **Your keys stay on your server**: every primary model request goes through a local HTTPS gateway with one cost ledger and an optional monthly spending cap; auxiliary API keys and Bilibili cookies are stored separately and encrypted.
 
 > The bot speaks Chinese and its default persona is written in Chinese; the persona files are plain text you can rewrite in any language.
 
@@ -22,30 +22,54 @@ A cat-like AI companion that lives in your QQ groups, on Bilibili and on your de
 
 ## Modules
 
-One required **memory core** plus three optional modules, in any combination: install one, two or all of them. A module that is not enabled never starts and does not affect the others.
+One required **memory core** plus three optional modules, in any combination: install one, two, or all of them. A module that is not enabled never starts and does not affect the others.
 
 | Module | What it does | Runs on |
 |---|---|---|
-| **Memory core** `core` (required) | Long-term memory (full-text search, optional semantic search), social graph and affinity, diary, info console, setup panel, local model gateway | Linux server (also runs on Windows) |
-| **QQ bot** `qq` | Uses the official QQ bot platform: group and private chat, instant replies to @-mentions, starting conversations in quiet groups, stickers, formulas rendered as images, image and video understanding, optional AI drawing, daily diary | Same as above |
-| **Video bot** `video` | Browses Bilibili recommendations by itself, watches a chosen live room, optionally sends danmaku and comments; what it watched goes into the shared memory | Linux server (needs `ffmpeg`) |
-| **Desktop pet** `pet` | Windows desktop pet: comments on your screen, voice chat, helps you operate the computer; its experiences sync into memory | Windows PC |
+| **Memory core** `core` (required) | Long-term memory (SQLite + FTS5, optional `bge-small-zh-v1.5` semantic search), social graph & affinity, async curation & diary, info/setup console, local HTTPS model gateway | Linux server (also runs on Windows) |
+| **QQ bot** `qq` | Official QQ bot channel (plus OneBot adapter): group/private chat, follow-up merging, nested forward unpacking, cold-group topics, traceable web search (`[W1]`), stickers, formula rendering, image/video understanding, optional AI drawing & local CPU voice, nightly diary | Same as above |
+| **Video bot** `video` | `bili_companion`: browses Bilibili recommendations by interest, watches a priority live room, optional danmaku & comments; writes SHA-256-verified autobiography & live presence snapshots into shared memory | Linux server (needs `ffmpeg`) |
+| **Desktop pet** `pet` | Windows desktop pet: screen commentary, voice chat, confirmation-gated PC actions, live Bilibili status readout, and fixed-file shift handoff synced back into memory | Windows PC |
 
 ## Architecture
 
+### System topology & unified memory bridge
+
 ```
-                 ┌──────────────── memory core ────────────────┐
-                 │ memory.sqlite3 · social graph · diary       │
-  QQ bot ──────▶ │ info console / setup panel (:18768)         │ ◀─── desktop pet (Windows, local or SSH)
-                 │ local gateway (:18765) ─▶ Gemini / OpenAI   │
-                 └────────────────▲───────────────────────┬────┘
-                                  │ summaries every 30m   │ optional auxiliaries (aux_config.json)
-                           video bot (Bilibili)           └─▶ independent HTTP APIs · optional CLI agents
+                        ┌─────────────────── memory core ───────────────────┐
+                        │  memory.sqlite3 (FTS5 + opt. bge-small-zh dense)  │
+  QQ bot (qq) ────────▶ │  social graph · async curation · private diary    │ ◀─── desktop pet (pet, Windows local/SSH)
+  (Official / OneBot)   │  info & setup console (:18768, loopback + token)  │      screen · voice · presence · fixed handoff
+                        │  local HTTPS gateway (:18765, ledger) ─▶ Upstream │
+                        └───────────────────▲─────────────────────────┬─────┘
+                                            │ hakimi-memory-bridge    │ optional extensions (aux_config.json /
+                                            │ 30m verified digest sync│                      antigravity_tasks.json)
+                                  video bot (video, bili_companion)   └─▶ independent HTTP APIs · CLI agents
+                                  ├─ to core: autobiography (topic-gated recall + tiered pruning) + presence
+                                  └─ from core: privacy-sanitized QQ/pet interest cues (no self:bilibili loop)
 ```
 
-- **One codebase, config-only differentiation**: a minimal single-API install runs the exact same repository code as a multi-provider, multi-agent production deployment; extra responders and supervisors are turned on only by files inside your **instance folder** (default `~/hakimi-data`).
-- **Package layout**: the core is the installable Python package `hakimi` (`src/hakimi/`); the video module is the `bili_companion/` package in the same repository.
-- **One upstream API is enough**: all core calls go through the local gateway at `https://127.0.0.1:18765`, which talks to Google Gemini, Gemini-compatible endpoints, or any OpenAI Chat Completions compatible API (DeepSeek, OpenRouter, local servers, etc.).
+- **One codebase, config-only differentiation**: a minimal single-API install runs the exact same repository code as a multi-provider, multi-agent production deployment; extra responders and supervisors are enabled strictly by files in your **instance folder** (default `~/hakimi-data`, `HAKIMI_ROOT`; QQ runtime files live in `<root>/official_test_runtime/`).
+- **Autobiography bridge & strict QQ token/disk budgets**:
+  - `bili_companion` exports SHA-256-verified watch/live autobiography snapshots (synced into `session='self:bilibili'`, recalled in QQ only when topics genuinely match—adding zero tokens to ordinary unrelated QQ chat) and lightweight live `presence.json` (gated to owner/status questions on QQ, automatically included on desktop pet).
+  - Tiered forgetting & physical disk cleanup: watched video/live episodes expire by depth/engagement (45–60 days high-interest, 14 days normal, 5 days low-interest, 240 active items cap by default), physically purging expired rows along with FTS rows, dense embeddings, and orphaned graph edges while `bili_companion` trims old evidence and acked outbox rows daily.
+- **One upstream API is enough**: all core calls pass through the local gateway at `https://127.0.0.1:18765` (tracked in `gateway_ledger.sqlite3`), supporting Google Gemini, Gemini-compatible endpoints, or any OpenAI Chat Completions compatible API (DeepSeek, OpenRouter, local servers, etc.).
+
+### Seven-layer package architecture
+
+The core Python package `hakimi` (`src/hakimi/`) is organized into **seven unidirectional layers** where lower layers cannot import higher layers—enforced statically via `hakimi arch --check` and `tests/test_architecture.py`:
+
+| Layer | Packages / Modules | Responsibility |
+|---|---|---|
+| **L6 Entry & Ops** `entry` | `ops`, `console`, `setup`, `config`, `modules`, `__main__`, `architecture`, `tools.qq_cli` | systemd unit runners, watchdog & minimal repair, info console, `/setup.html`, CLI entry, import-direction checker |
+| **L5 Orchestration** `orchestration` | `bridge`, `transport`, `curation`, `features` | Turn scheduling & follow-up merging (optional C++17 `bridge/followup.cpp`), official QQ & OneBot transports, async memory/member curation, diary / QZone / help queue |
+| **L4 Models & Web** `models` | `models`, `web` | Model routing & budgets, primary/backup/fallback/Antigravity sessions; public web search & page fetch, metered native Google grounding, optional DSH search & `[W1]` citation archive |
+| **L3 Prompting** `prompting` | `prompt` | Context compaction & token budgets, per-group tone profiles, tool catalog & selection, gated Bilibili experience & presence injection |
+| **L2 Capabilities** `capabilities` | `tools`, `voice` | Multi-model AI drawing, Markdown/TeX math rendering, stickers, Bilibili & QQ mini-app frame sampling, feeding, optional local CPU ASR & TTS/humming |
+| **L1 Primitives & Data** `data` | `chat`, `memory`, `social`, `gateway` | Shared QQ primitives (bubbles, mentions, quotes, media/file permissions, quotas, send logs), `MemoryStore` & autobiography sync/pruning, social graph & cross-group identities, gateway ledger |
+| **L0 Foundation** `foundation` | `core`, `persona`, `defaults`, `paths`, `_legacy` | `root`/`runtime`/`base` paths, JSON I/O, time helpers, Fernet secrets, persona text, backward-compatible legacy module aliases |
+
+The video companion lives alongside it in `bili_companion/`, and the Windows desktop pet lives in `desktop_pet/` (with root entry compatibility shim `desktop_pet_agent.py`).
 
 ## Single-API Default and Independent Auxiliaries
 
@@ -57,50 +81,50 @@ Every secondary model call and background supervisor is decoupled behind `<insta
 | **QQ primary hot-backup route** | `qq_backup` | `enabled: false` (`mode: "disabled"`) | `custom_api` (separate OpenAI/Gemini HTTP API with optional `fallback_model`) or `companion_duty` |
 | **Timeout / outage fallback responder** | `fallback` | `enabled: false` (`backend: "http_api"`) | Enable with an independent HTTP API (no external CLI required) or external `dsh` CLI |
 | **Context & continuation judge** | `context_judge` | `mode: "heuristic"` (local rules, zero API calls) | `main_gateway`, `custom_api`, or `dsh` |
-| **Search pre-routing & paid search** | `search_routing` | `enabled: false`, `judge_mode: "local_rules"`, `paid_search_mode: "disabled"` | Enable pre-search judge (`main_gateway` / `custom_api` / `dsh`) and `deepseek` paid search; optionally enable `dsh_on_budget` to search with the DSH account when reservations are declined or a provider reports a quota limit (separate charges may apply). Off by default; public feeds remain available |
+| **Search pre-routing & paid search** | `search_routing` | `enabled: false`, `judge_mode: "local_rules"`, `paid_search_mode: "disabled"` | Enable pre-search judge (`main_gateway` / `custom_api` / `dsh`) and DeepSeek paid search; optionally enable `dsh_on_budget` to search with the DSH account when reservations are declined or a provider reports a quota limit (separate charges may apply). Off by default; public sources remain available |
 | **Daily diary fallback** | `diary.fallback_enabled` | `false` (main model only) | `true` (falls back to the configured `fallback` backend if primary fails) |
 | **Ops watchdog / Terra supervision / Sol repair / Help queue** | `ops.*` | All 4 toggles `false` (zero extra supervisor processes) | Toggle each independently (`watchdog_enabled`, `terra_supervision_enabled`, `sol_repair_enabled`, `codex_help_enabled`) with `main_gateway`, `custom_api`, or `codex_cli` |
 
-> Leave all auxiliary settings at their defaults for zero-dependency single-API operation. Whenever you want a separate model or CLI agent for redundancy or supervision, configure it in `/setup.html` or `<instance>/aux_config.json` and verify with `hakimi config check`. See [docs/configuration.md](docs/configuration.md) (Chinese) for schema details.
+> Leave all auxiliary settings at their defaults for zero-dependency single-API operation. Linux instances can also configure optional Antigravity CLI task routing in `<instance>/antigravity_tasks.json` for `complex` QQ questions, `reflection` passes, and `diary` drafts. Whenever you want a separate model or CLI agent for redundancy or supervision, configure it in `/setup.html` or `<instance>/aux_config.json` and verify with `hakimi config check`. See [docs/configuration.md](docs/configuration.md) (Chinese) for schema details.
 
 ## Features
 
-**Conversation**
-- Replies immediately to @-mentions and private messages; otherwise it collects context and scores each turn before deciding to speak, and yields in busy groups.
-- Starts a topic on its own when a group has been quiet for a while (configurable time windows).
-- Per-user rate limit: one person can trigger at most 7 replies per 30 minutes, which stops spam and keeps costs down.
-- Fallback responders, separate review/backup APIs, LLM context judges, search pre-classifiers, and ops supervision agents are **off by default or reuse the main gateway**—and can each be enabled and pointed at separate APIs or CLIs as shown above.
+**Conversation & scheduling**
+- Replies immediately to @-mentions and private messages while briefly buffering and merging consecutive clarifications from the same sender (using optional C++17 native rules or pure Python); unpacks nested forwarded QQ records for context review.
+- Collects context and scores each turn before deciding to speak, yielding in busy groups; auto-quotes target messages when intervening replies arrive; opens topics on configurable cold-group windows.
+- Per-user rate limit: one person can trigger at most 7 replies per rolling 30 minutes across routes, stopping spam and bounding cost.
 
-**Memory and relationships**
-- Messages are stored verbatim, with full-text plus optional semantic hybrid search; memory is scoped per group, so private chats never leak into group replies.
-- Per-person notebooks, affinity and closeness scores (with their sources recorded separately), interaction familiarity, and a memory graph.
-- After each reply window it reviews the conversation asynchronously and updates event cards and impressions; every two hours it quietly reviews a few members (no messages are sent).
-- Writes an illustrated private diary every night, exportable as PDF.
+**Memory, relationships & diary**
+- Verbatim storage with SQLite FTS5 + optional exact local dense retrieval (`bge-small-zh-v1.5`), strictly isolated per group so private chats never leak into group replies.
+- Per-person notebooks, affinity and closeness scores (sources tracked separately), familiarity, and memory graph; `hakimi.curation` updates event cards and impressions asynchronously after reply windows and quietly reviews members every two hours.
+- Bilibili autobiography (`B站亲历`) recalled naturally on matching topics with tiered TTL expiry and physical pruning.
+- Illustrated private diary written nightly at 22:30 (New York time) with LaTeX layout, PDF export, and optional delivery to verified owner DMs.
 
-**Media**
-- Reads images (only those authorised for the current turn) and watches Bilibili and QQ mini-program videos by sampling frames on demand.
-- Renders Markdown/TeX formulas locally into images.
-- Picks stickers from a library to fit the context and collects members' stickers.
-- Optional AI drawing: off by default; set your own image model endpoint and key, plus daily and monthly spending caps, on the console's drawing settings page.
+**Web retrieval & citations**
+- Public web search and bounded HTTPS page reads (including news/encyclopedia recovery and anime calendar), strictly obeying per-user network bans without bypassing CAPTCHAs or paywalls.
+- Immutable `[W1]` source snapshots (`web.sources`) scoped to delivered replies so follow-up quotes can inspect citations offline.
+- Optional metered native Google Search Grounding, DeepSeek paid search, and `dsh_on_budget` fallback.
 
-**Console** (loopback only, token-protected, reached through an SSH tunnel)
-- Relationship view (graph, people, affinity and profiles across groups), message log, legacy group and member matching, video activity, review history, model budget, drawing settings.
-- Setup panel: module switches, model and key, owner and persona, QQ bot, Bilibili login, desktop pet connection, plus the collapsed **“高级与独立 API” (Advanced & independent APIs)** section; saving writes configuration files and restarts affected services.
+**Media & voice**
+- Reads authorized images and watches Bilibili and QQ mini-program videos via on-demand frame sampling.
+- Renders Markdown/TeX formulas locally as images; picks context-appropriate stickers and collects member stickers.
+- Optional ordered multi-model AI drawing (off by default) with single quota reservation and daily/monthly caps configured in drawing settings.
+- Optional QQ voice (`hakimi.voice`, off by default): local CPU speech-to-text (kept session-private, never saved to long-term memory) and explicit-request TTS/short humming using user-authorized reference clips only; see [docs/voice.md](docs/voice.md).
 
-**Operations**
-- Local model gateway: one ledger, cost estimated from your unit prices, optional monthly cap; at the cap the bot switches to your configured backup/fallback route or pauses video watching.
-- Optional health watchdog, Terra style supervision, Sol minimal repair, and help queue (all off by default; configurable in the panel or `aux_config.json`).
+**Console & operations** (loopback only at `127.0.0.1:18768`, token-protected, reached through an SSH tunnel)
+- Relationship graph, profiles across groups, message log, activity view (showing reply channel and trigger alongside model tier), legacy group/member matching, video activity, review history, model budget, drawing settings, and `/setup.html`.
+- Local model gateway ledger with monthly cap enforcement; optional watchdog, Terra style supervision, Sol minimal repair, and expert help queue (all off by default).
 
-The full list, with the switch for each feature, is in [docs/features.md](docs/features.md) (Chinese).
+The full feature list and toggles live in [docs/features.md](docs/features.md) (Chinese).
 
 ## Quick start (Linux server)
 
-Requires Python 3.12+ and git; the video module also needs `ffmpeg`. Tested on Ubuntu and Debian.
+Requires Python 3.12+ and git; the video module also needs `ffmpeg`. Tested on Ubuntu and Debian. During installation, `setup.py` automatically compiles the optional C++17 follow-up classifier (`hakimi.bridge._followup_rules`) when a compiler is available and falls back seamlessly to pure Python otherwise.
 
 ```bash
 git clone https://github.com/yemaodiaoling-max/Hakimi_Robot_Wither.git hakimi && cd hakimi
 deploy/install.sh --modules qq,video,pet      # QQ bot only: --modules qq
-# add --vector for semantic memory search (about 500 MB)
+# add --vector for local semantic memory search (about 500 MB)
 ```
 
 The installer creates a virtual environment, the instance folder (default `~/hakimi-data`), the gateway certificate and the console token, and starts the **gateway** and the **console** as systemd user services. It never asks for keys.
@@ -137,7 +161,7 @@ python -m venv .venv; .venv\Scripts\pip install -e .[pet]
 .venv\Scripts\python desktop_pet\pet_app.py
 ```
 
-Choose “local” when the bot runs on the same Windows PC (the pet starts its back end locally), or “SSH” when it runs on a server (the pet talks to it over one persistent SSH connection). Every action on your computer (opening an app, running a command, keyboard or mouse input) first shows a confirmation button and only runs after you click “允许” (allow).
+Choose “local” when the bot runs on the same Windows PC (the pet starts its back end locally), or “SSH” when it runs on a server (the pet talks to it over one persistent SSH connection). Every action on your computer (opening an app, running a command, keyboard or mouse input) first shows a confirmation button and only runs after you click “允许” (allow). Live Bilibili companion status can be queried via `desktop_pet\pet_cli.py bili-status`, and long-running watch shifts use fixed-file handoff (`rotate` / `handoff-sync`) to avoid context bloat.
 
 ## Persona and identity
 
@@ -169,6 +193,8 @@ Restart the affected services afterwards (`systemctl --user restart 'hakimi-*'`)
 
 ```bash
 hakimi modules                 # installed / enabled modules (including aux_config.json ops gating)
+hakimi arch                    # print the seven-layer package layout and module sizes
+hakimi arch --check            # statically verify downward-only import direction
 hakimi setup status            # what is configured (keys are never shown)
 hakimi gateway status          # gateway: upstream, model mapping, requests and estimated cost this month
 hakimi gateway models          # models available to the upstream key
@@ -192,19 +218,20 @@ Data and configuration in the instance folder are not touched by updates.
 
 - **Keys stay on your server**: the main model key is stored in the gateway folder (mode 0600) and no module process can read it; the QQ AppSecret, fallback keys, and independent auxiliary API keys configured in `/setup.html` (stored under `provider` and `aux` in `credentials.fernet`) are Fernet-encrypted in `~/.config/hakimi/`; the Bilibili cookie is encrypted in the video module's private folder. The panel only shows “saved / not set” and never echoes a value.
 - **Chats, memory and diaries live in the instance folder**, not in the code repository; `.gitignore` excludes these folders. Do not commit your instance folder to git.
-- **Privacy boundaries**: memory is scoped per group and group replies never quote private chats; when the desktop pet sees you chatting privately with someone it keeps you company but writes nothing to shared memory; modules exchange only curated summaries, never private messages or account data.
+- **Privacy boundaries**: memory is scoped per group and group replies never quote private chats; when the desktop pet sees you chatting privately with someone it keeps you company without writing to shared memory or shift handoffs; modules exchange only privacy-sanitized summaries and never duplicate private messages or account IDs.
 - **Console security**: listens on `127.0.0.1` only, requires the token, and checks same-origin on every write.
 
 ## Development and tests
 
 ```bash
-python tests/run_tests.py                       # main suite (cases in tests/known_stale.py run as expected failures)
+python -m hakimi arch --check                    # enforce seven-layer import direction
+python tests/run_tests.py                        # main suite (cases in tests/known_stale.py run as expected failures)
 cd bili_companion && PYTHONPATH=src python -m unittest discover -s tests
 ```
 
-- The code layout is described in [docs/architecture.md](docs/architecture.md) (Chinese). Register new features in `src/hakimi/features/registry.py`, then refresh the feature list with `hakimi features --markdown`.
+- The code layout and layer boundaries are described in [docs/architecture.md](docs/architecture.md) (Chinese). Register new features in `src/hakimi/features/registry.py`, then refresh the feature list with `hakimi features --markdown`.
 - Tests use only scrubbed data and fake identities (`tests/fixtures/`); they never send real messages or model requests.
-- The main suite currently has a few known failures; please make sure a change adds no new ones.
+- The main suite currently has a few known stale cases; please make sure a change adds no new test or architecture failures.
 - Issues and pull requests are welcome.
 
 ## Documentation
@@ -212,9 +239,10 @@ cd bili_companion && PYTHONPATH=src python -m unittest discover -s tests
 The documents are written in Chinese.
 
 - [Modules](docs/modules.md): what each module installs, which services it starts and how they share memory
+- [Architecture](docs/architecture.md): seven-layer layout, import rules and code-vs-data separation
 - [Model gateway](docs/gateway.md): model mapping, unit prices and monthly cap, proxy, compatible endpoints
-- [Configuration](docs/configuration.md) · [Architecture](docs/architecture.md) · [Features](docs/features.md)
-- [Memory](docs/memory_operation.md) · [Diary](docs/diary_operation.md) · [Math rendering](docs/math_tool.md) · [Fallback model](docs/fallback_operation.md) · [Voice](docs/voice.md)
+- [Configuration](docs/configuration.md) · [Features](docs/features.md) · [Web search routing](docs/search-routing.md)
+- [Memory & Bilibili bridge](docs/memory_operation.md) · [Diary](docs/diary_operation.md) · [Math rendering](docs/math_tool.md) · [Bilibili video observation](docs/bilibili_video_operation.md) · [Fallback model](docs/fallback_operation.md) · [Voice](docs/voice.md)
 - [Persona and prompts](src/hakimi/persona/README.md): rename the bot, change its personality, add style samples
 - Video module: [bili_companion/README.md](bili_companion/README.md)
 
