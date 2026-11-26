@@ -28,7 +28,7 @@ def select_names(payload, names, base=None):
     if any(row.get('voice_ref') or 'voice.read message_id=' in str(row.get('text','')) for row in rows):
         selected.add('voice.read')
     elif target.get('reply_to') and (base/'state/voice.sqlite3').is_file():
-        from hakimi.voice.store import preview
+        from hakimi.memory.voice_receipts import preview
         if preview(base,payload.get('session_key'),str(target['reply_to'])).get('text'):
             selected.add('voice.read')
     text = '\n'.join(str(row.get('text', '')) for row in rows)

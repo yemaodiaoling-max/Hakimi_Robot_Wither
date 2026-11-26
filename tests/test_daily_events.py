@@ -10,7 +10,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
-from hakimi.memory import daily_events, impression_events
+from hakimi.memory import daily_events
+from hakimi.curation import impression_events
 from hakimi.memory.memory_store import MemoryStore
 
 
@@ -79,7 +80,7 @@ class DailyEventTests(unittest.TestCase):
             daily_events.validate([{'source_ids': [1, 2], 'text': '混入私聊'}], [packet, other])
 
     def test_classifier_keeps_raw_json_separate_from_positive_instructions(self):
-        from hakimi.prompt.prompt_language import prompt as positive_prompt
+        from hakimi.persona.prompt_language import prompt as positive_prompt
         messages = [{'id': 1, 'session': 'group:1', 'author': '101',
                      'text': '我说“不能去”，对方说“不要忘记下次约定”。\n后来约好了。'}]
         def invoke(task, workspace):
@@ -93,7 +94,7 @@ class DailyEventTests(unittest.TestCase):
             self.assertNotIn('text as JSON', rendered)
             self.assertIn('同一JSON对象的顶层字段', rendered)
             return {'items': [], 'daily_events': []}
-        with patch('hakimi.memory.review_runtime.classify', side_effect=invoke) as runner, \
+        with patch('hakimi.curation.review_runtime.classify', side_effect=invoke) as runner, \
                 patch('hakimi.ops.cloud_service.environment', return_value={'PATH': os.environ.get('PATH', '')}):
             for notes in ([], [{'id': 3, 'current_note': '以后不要忘记这次约定'}]):
                 with self.subTest(notes=bool(notes)):
@@ -159,7 +160,7 @@ class DailyEventTests(unittest.TestCase):
 
 
     def test_multi_author_drops_person_id_and_prepare_includes_nicknames(self):
-        from hakimi.prompt.prompt_language import DEFENSIVE
+        from hakimi.persona.prompt_language import DEFENSIVE
         self.assertIsNone(DEFENSIVE.search(daily_events.INSTRUCTION))
         self.index.observe({'session_key': 'group:1', 'user_id': '101', 'nickname': '主人',
                             'text': '用GPT来提升你的写作吧，你和gpt差不多会写', 'message_id': 'm1',

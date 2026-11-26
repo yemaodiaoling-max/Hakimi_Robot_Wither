@@ -8,7 +8,8 @@ import json
 from pathlib import Path
 import time
 
-from hakimi.memory import impression_events, relationship_events, review_audit, review_recovery
+from hakimi.memory import relationship_events, review_audit, review_recovery
+from hakimi.curation import impression_events
 
 
 def initialize(db):
@@ -221,7 +222,7 @@ INSTRUCTION = (
 
 def tick(base, now=None, *, runner=None):
     from hakimi.memory.memory_store import store
-    from hakimi.memory.review_runtime import classify, error_code, is_enabled
+    from hakimi.curation.review_runtime import classify, error_code, is_enabled
     if runner is None and not is_enabled(base):
         return {'status': 'idle', 'reason': 'review_disabled'}
     real_time = now is None
@@ -259,7 +260,7 @@ def tick(base, now=None, *, runner=None):
             return {'status':'completed','reviewed':0}
     try:
         result = runner(packet,base) if runner else classify(INSTRUCTION+'\n'+json.dumps(classifier_packet(packet),ensure_ascii=False,separators=(',',':')),base)
-        from hakimi.memory.review_runtime import reviewer_metadata
+        from hakimi.curation.review_runtime import reviewer_metadata
         review_metadata=reviewer_metadata(result)
         raw = result.get('relationship_events')
         if not isinstance(raw,list):

@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 import unittest
 from hakimi.bridge.turn_coordinator import TurnCoordinator
-from hakimi.bridge.turn_lanes import lane_context, active_context_path
+from hakimi.chat.turn_lanes import lane_context, active_context_path
 
 
 class LaneTests(unittest.TestCase):
@@ -64,7 +64,7 @@ class LaneTests(unittest.TestCase):
         self.assertEqual(restored.for_lane('at1').snapshot()['trigger_id'], second['trigger_id'])
 
     def test_parallel_replies_cannot_cross_the_shared_user_limit(self):
-        from hakimi.bridge import user_reply_quota
+        from hakimi.chat import user_reply_quota
         state = self.coordinator._read()
         history = []
         for index in range(6):

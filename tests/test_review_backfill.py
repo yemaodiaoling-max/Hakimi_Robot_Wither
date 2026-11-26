@@ -1,7 +1,8 @@
 import unittest
 
 import test_post_reply_review as fixtures
-from hakimi.memory import post_reply_review as review, review_recovery
+from hakimi.memory import review_recovery
+from hakimi.curation import post_reply_review as review
 from hakimi.console.payloads_review_history import review_history_payload
 
 

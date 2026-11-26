@@ -131,7 +131,7 @@ def _audit_watermark(row, now):
 
 def recover_study_messages(base, cfg, now, *, reply_watermarks=True):
     """Return bounded messages/reply times, or None when inputs are uncertain."""
-    from hakimi.bridge.interaction_policy import ignored_text
+    from hakimi.chat.interaction_policy import ignored_text
     try:
         if not _epoch(now, now) or not isinstance(cfg, dict):
             return None
@@ -150,7 +150,7 @@ def recover_study_messages(base, cfg, now, *, reply_watermarks=True):
         for key in ("ignored_user_ids", "known_bot_ids", "ignored_bot_ids"):
             excluded |= _ids(profile.get(key, [])) | _ids(cfg.get(key, []))
         base = Path(base).resolve()
-        from hakimi.bridge.turn_lanes import LANES
+        from hakimi.chat.turn_lanes import LANES
         turn_names = ("turn_state.json",) + tuple("turn_lanes/"+lane+".json" for lane in LANES if lane)
         names = ("participation_state.json", "turn_events.jsonl", "outbox.jsonl", "chat_history.jsonl") + turn_names
         paths = {name: _path(base, name) for name in names}

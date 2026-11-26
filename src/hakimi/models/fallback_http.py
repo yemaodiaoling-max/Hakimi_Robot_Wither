@@ -54,7 +54,7 @@ def run_http_fallback(prompt, base=BASE_DIR, *, timeout_seconds=90, images=None,
         raise FallbackError("FALLBACK_PROMPT_INVALID")
     validated_images = _validate_images(images)
     cfg = dict(cfg) if cfg is not None else aux_config.fallback_config(base)
-    from hakimi.prompt.prompt_language import prompt as positive_prompt
+    from hakimi.persona.prompt_language import prompt as positive_prompt
 
     system_text = persona.text("dsh_runtime_prefix.txt")
     task = "Return one JSON object with action and text, using the tool protocol in the current task.\n" + positive_prompt(prompt)

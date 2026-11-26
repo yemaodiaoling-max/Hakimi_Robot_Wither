@@ -3,7 +3,7 @@ import base64
 import io
 from pathlib import Path
 
-from hakimi.transport.image_permissions import allowed_images_for_session
+from hakimi.chat.image_permissions import allowed_images_for_session
 from hakimi.core.context_window import select_context
 
 MAX_IMAGES = 2
@@ -44,7 +44,7 @@ def prepare_recalled_sticker(payload, base, *, now=None):
     """Only the receipt resolver can authorize a previously sent sticker."""
     if payload.get('internal_review') or payload.get('cold_topic_request'):
         return None
-    from hakimi.transport.sent_media_context import recalled_sticker
+    from hakimi.chat.sent_media_context import recalled_sticker
     matched = recalled_sticker(payload, base, now=now)
     if matched:
         message_id, path = matched

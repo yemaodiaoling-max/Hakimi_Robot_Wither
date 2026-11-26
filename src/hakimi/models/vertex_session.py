@@ -44,7 +44,7 @@ def declarations(names=None):
             argument = row['parametersJsonSchema']['properties']['text']
             argument.pop('description', None)
             argument['maxLength'] = 80
-    from hakimi.prompt.prompt_language import schema as positive_schema
+    from hakimi.persona.prompt_language import schema as positive_schema
     rows = positive_schema(rows)
     rows = rows + positive_schema([copy.deepcopy(item) for item in WEB_TOOLS if item['name'] not in {row['name'] for row in rows}]) + [{'name': 'image.read', 'description': '读取images.list返回的图片，实际图片内容会直接提供给你。', 'parametersJsonSchema': {'type':'object','properties':{'path':{'type':'string'}},'required':['path']}}]
     rows = [row for row in rows if names is None or row['name'] in names]
@@ -245,7 +245,7 @@ class VertexSession:
                 except OSError:pass
 
     def _images(self, claim, requested=None):
-        from hakimi.transport.image_permissions import allowed_images_for_session
+        from hakimi.chat.image_permissions import allowed_images_for_session
         from hakimi.tools.qq_cli import _image_bytes
         key = claim['payload']['session_key']
         if requested is None:
@@ -298,7 +298,7 @@ class VertexSession:
         from hakimi.prompt.tool_catalog import BY_NAME
         from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL, offered as offer_drawing
         if name == 'members.mention':
-            from hakimi.transport.member_mentions import mention, mention_status
+            from hakimi.chat.member_mentions import mention, mention_status
             from hakimi.bridge.turn_coordinator import TurnCoordinator
             from hakimi.tools.math_render import log_tool_call
             result=mention(self.cwd,TurnCoordinator(self.cwd),claim['token'],'gemini',**arguments)
@@ -370,7 +370,7 @@ class VertexSession:
         tool_env = {key: value for key, value in self.env.items() if not key.startswith('AGY_LLM_GATEWAY_')}
         result = subprocess.run(command, cwd=self.cwd, env=tool_env, capture_output=True,
                                 text=True, encoding='utf-8', timeout=timeout)
-        from hakimi.bridge.mention_segments import UNRESOLVED
+        from hakimi.chat.mention_segments import UNRESOLVED
         if name == 'reply.send' and result.returncode and UNRESOLVED in result.stdout:
             return {'ok': False, 'error': UNRESOLVED, 'hint': '请用 members.mention 按本群昵称选人。'}
         if result.returncode and self.last_error is None:
@@ -577,7 +577,7 @@ class VertexSession:
                         from hakimi.voice.tts import failed_voice_reply
                         fallback = failed_voice_reply(output, call_args.get('text'))
                         if fallback:
-                            from hakimi.bridge.reply_format import text_bubbles
+                            from hakimi.chat.reply_format import text_bubbles
                             receipt = coordinator.submit_reply(claim['token'], text_bubbles(fallback), 'gemini')
                             if not receipt.get('accepted'):
                                 raise RuntimeError('vertex_reply_submission_failed')
@@ -590,7 +590,7 @@ class VertexSession:
                         from hakimi.tools.drawing_delivery import failure_text
                         fallback = failure_text(output)
                         if fallback:
-                            from hakimi.bridge.reply_format import text_bubbles
+                            from hakimi.chat.reply_format import text_bubbles
                             receipt = coordinator.submit_reply(claim['token'], text_bubbles(fallback), 'gemini')
                             if not receipt.get('accepted'):
                                 raise RuntimeError('vertex_reply_submission_failed')
@@ -630,7 +630,7 @@ class VertexSession:
                     if not coordinator.record_progress(claim['token']):
                         raise RuntimeError('vertex_turn_ownership_lost')
                     receipt = self.tool_runner('reply.send', {'text': final_text}, claim, tool_remaining())
-                    from hakimi.bridge.mention_segments import UNRESOLVED, CLARIFY
+                    from hakimi.chat.mention_segments import UNRESOLVED, CLARIFY
                     if receipt.get('error') == UNRESOLVED:
                         cleared = coordinator.select_mention(claim['token'], 'gemini', None)
                         if cleared['accepted']:

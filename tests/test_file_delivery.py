@@ -10,7 +10,7 @@ import time
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from hakimi.transport import file_delivery as files
+from hakimi.chat import file_delivery as files
 from hakimi.models.fallback_runner import parse_response, FallbackError
 from hakimi.models.fallback_supervisor import fallback_prompt
 from hakimi.transport.official_files import hashes, upload, put_part

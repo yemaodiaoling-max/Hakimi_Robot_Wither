@@ -4,7 +4,7 @@ This is an accidental-misuse boundary, not an operating-system sandbox. The
 trusted waiter creates active_context.json; QQ messages may not edit it.
 """
 from hakimi import paths
-from hakimi.bridge.turn_lanes import active_context_path
+from hakimi.chat.turn_lanes import active_context_path
 
 import ast
 import json

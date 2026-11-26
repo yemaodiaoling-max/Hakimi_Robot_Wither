@@ -13,7 +13,8 @@ from hakimi.memory.memory_store import MemoryStore
 from hakimi.models import search_routing, web_access
 from hakimi.models.fallback_prompt import fallback_prompt
 from hakimi.prompt.prompt_context import build_context, render_vertex_prompt
-from hakimi.voice import delivery, store
+from hakimi.voice import delivery
+from hakimi.memory import voice_receipts as store
 from test_delivery_guard import OfflineEventLoop
 
 
@@ -204,7 +205,7 @@ class VoicePrivacyTests(unittest.TestCase):
                             RECENT_EVENT_IDS={}, engine=engine, load_config=Mock(return_value=config),
                             session_is_allowed=Mock(return_value=True), enqueue_wake_beacon=capture_wake,
                             record_interaction=Mock(), cold_settings=Mock(return_value={})), \
-             patch("hakimi.bridge.interaction_policy.ignored", return_value=False):
+             patch("hakimi.chat.interaction_policy.ignored", return_value=False):
             self.deliver_once(bridge.process_incoming_event)
         self.assertEqual(observed,[(True,False)])
         with self.memory.db() as db:

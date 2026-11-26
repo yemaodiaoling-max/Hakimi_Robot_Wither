@@ -37,7 +37,7 @@ def stamp(at):
 def status():
     from hakimi.models.provider_health import availability
     worker=load(BASE/'state/official_worker.json',{})
-    from hakimi.bridge.turn_lanes import LANES
+    from hakimi.chat.turn_lanes import LANES
     turns={lane or 'main':load(BASE/'state'/('turn_lanes/'+lane+'.json' if lane else 'turn_state.json'),{}) for lane in LANES}
     turn=turns['main']
     return {'host':'cloud','online':bool(worker.get('online') and time.time()-worker.get('at',0)<30),
@@ -66,7 +66,7 @@ def main():
         import sys
         sys.argv=[sys.argv[0],'--report'];supervise();return
     if args.view=='cooldowns':
-        from hakimi.bridge.interaction_policy import state
+        from hakimi.chat.interaction_policy import state
         rows=[{'user_id':uid,'minutes_left':round((row['until']-time.time())/60,1)}
               for uid,row in state(BASE).get('users',{}).items() if row.get('until',0)>time.time()]
         print(json.dumps(rows,ensure_ascii=False));return

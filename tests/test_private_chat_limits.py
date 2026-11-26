@@ -7,10 +7,10 @@ import time
 import unittest
 from unittest.mock import patch
 
-from hakimi.bridge import user_reply_quota as quota
+from hakimi.chat import user_reply_quota as quota
 from hakimi.bridge.conversation_scheduler import ConversationScheduler
 from hakimi.bridge.delivery_guard import DeliveryGuard
-from hakimi.bridge.interaction_policy import ignored
+from hakimi.chat.interaction_policy import ignored
 from hakimi.bridge.turn_coordinator import TurnCoordinator
 from hakimi.models.fallback_supervisor import can_call, record_call
 from hakimi.models import fallback_supervisor

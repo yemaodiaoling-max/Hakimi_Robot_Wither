@@ -17,7 +17,7 @@ from hakimi.transport.forward_messages import (
     split_at_context,
 )
 import websockets
-from hakimi.transport.official_base import API_ROOT, GROUP_EVENTS, MAX_IMAGE_BYTES, MESSAGE_EVENTS, NoRedirect, OfficialError, PRIVATE_EVENTS, SELF_ALIAS, alias, cq_escape, fixed_json  # noqa: F401 (re-export)
+from hakimi.chat.official_base import API_ROOT, GROUP_EVENTS, MAX_IMAGE_BYTES, MESSAGE_EVENTS, NoRedirect, OfficialError, PRIVATE_EVENTS, SELF_ALIAS, alias, cq_escape, fixed_json  # noqa: F401 (re-export)
 from hakimi.transport.official_routes import RouteStore  # noqa: F401 (re-export)
 from hakimi.transport.official_api import OfficialAPI, download_image  # noqa: F401 (re-export)
 
@@ -108,7 +108,7 @@ class OfficialAdapter:
             return self.routes[group]
         if not self.auto_groups:
             return None
-        from hakimi.transport.official_groups import adapt_group, known_groups, style_template
+        from hakimi.chat.official_groups import adapt_group, known_groups, style_template
         info = {}
         try:
             response = await self.api.call("GET", f"/v2/groups/{group}/info")
@@ -134,7 +134,7 @@ class OfficialAdapter:
         command = re.fullmatch(r"\s*/(关联旧群|群风格)\s+(\S+)\s*", re.sub(r"<@!?[^>]+>", "", content))
         if not command:
             return False
-        from hakimi.transport.official_groups import adapt_group, associate_group
+        from hakimi.chat.official_groups import adapt_group, associate_group
         if author.get("member_role") not in {"owner", "admin"}:
             reply = "这项群配置请由群主或管理员设置"
         else:
@@ -230,7 +230,7 @@ class OfficialAdapter:
         if not fresh:
             return None
         if not private and author.get('bot') is True:
-            from hakimi.bridge.bot_registry import platform
+            from hakimi.chat.bot_registry import platform
             platform(self.base,local_user,str(author.get('username',''))[:80],'group:'+route['local_id'])
         if not private and await self.control_command(route, author, content, local):
             return None
@@ -270,7 +270,7 @@ class OfficialAdapter:
                 "platform_self_mention": directed, "normalized_self_mention": f"[CQ:at,qq={SELF_ALIAS}]" in clean})
         ref = self.store.ref_local(ext.get("ref_msg_idx", ""), group)
         if not ref and ext.get('ref_msg_idx'):
-            from hakimi.voice.store import resolve_reference
+            from hakimi.memory.voice_receipts import resolve_reference
             ref=resolve_reference(self.base,('private:' if private else 'group:')+route['local_id'],ext['ref_msg_idx'])
         if ref:
             clean = f"[CQ:reply,id={ref}] " + clean
@@ -308,7 +308,7 @@ class OfficialAdapter:
                "sender":{"nickname":str(author.get('username') or ('朋友' if private else '群友'))[:80]}}
         if not private:event['group_id']=int(route['local_id'])
         if prior_messages:
-            from hakimi.core.self_reply_context import recent_sent_receipts
+            from hakimi.chat.self_reply_context import recent_sent_receipts
             try:
                 receipts = recent_sent_receipts(self.base, 'group:' + route['local_id'], at)
             except OSError:
@@ -347,13 +347,13 @@ class OfficialAdapter:
     async def send(self, session, text, timeout=12):
         phase = {}
         if text.startswith(("[CQ:file,", "[CQ:image,")):
-            from hakimi.transport.file_delivery import settings
+            from hakimi.chat.file_delivery import settings
             timeout = max(timeout, float(settings(self.base)["upload_timeout_seconds"]))
         try:
             async with asyncio.timeout(timeout):
                 return await self._send_once(session, text, phase)
         except TimeoutError:
-            from hakimi.bridge.message_lifecycle import record
+            from hakimi.chat.message_lifecycle import record
             record(self.base,dict(session_key=session,reply_target_message_id=phase.get('source_id','')),
                    'send_error',trigger_id=phase.get('trigger_id',''),reason='SEND_TIMEOUT_UNKNOWN')
             self.store.set("last_send_error", {"code": "SEND_TIMEOUT_UNKNOWN", "at": self.clock()})
@@ -405,13 +405,13 @@ class OfficialAdapter:
                     from hakimi.tools.sticker_catalog import require_allowed
                     sticker_digest = require_allowed(path.read_bytes(), path.name, self.base)["sha256"]
                 else:
-                    from hakimi.transport.image_permissions import allowed_images_for_session
+                    from hakimi.chat.image_permissions import allowed_images_for_session
                     if str(path) not in allowed_images_for_session(session, self.base):
                         raise OfficialError("UNAPPROVED_IMAGE")
                 info = await self.api.upload_image(group,path,private=True) if private else await self.api.upload_image(group,path)
                 body = {"msg_type": 7, "media": {"file_info": info}}
             elif file_message:
-                from hakimi.transport.file_delivery import from_segment
+                from hakimi.chat.file_delivery import from_segment
                 try:path, kind = from_segment(text, session, self.base)
                 except ValueError as exc:raise OfficialError("INVALID_OUTGOING_FILE") from exc
                 phase["stage"]="upload"
@@ -430,7 +430,7 @@ class OfficialAdapter:
                     sent_text=f'[CQ:image,file={image.as_uri()},sub_type=0]'
                 body = {"msg_type": 7, "media": {"file_info": info}}
             elif '[CQ:at,' in text and not private:
-                from hakimi.transport.member_mentions import wire_text
+                from hakimi.chat.member_mentions import wire_text
                 try:body={'msg_type':2,'markdown':{'content':wire_text(text,self.store)}}
                 except ValueError as exc:raise OfficialError('INVALID_MENTION') from exc
             elif "<qqbot-at-user" in html.unescape(text) and not private:
@@ -469,7 +469,7 @@ class OfficialAdapter:
             error={"code":exc.code,"at":self.clock(),"stage":phase.get('stage','prepare'),
                    "endpoint":getattr(exc,'endpoint',''),"detail":getattr(exc,'detail',''),
                    "mode":phase.get('mode',''),"session_key":session,"reply_id":pending.get('reply_id','')}
-            from hakimi.bridge.message_lifecycle import record
+            from hakimi.chat.message_lifecycle import record
             record(self.base,dict(session_key=session,reply_target_message_id=pending.get('reply_target_id','')),
                    'send_error',trigger_id=pending.get('trigger_id',''),reason=exc.code)
             self.store.set("last_send_error",error)
@@ -575,7 +575,7 @@ class OfficialAdapter:
                                 await self.permission_event(kind, frame.get('d', {}))
                                 route = self.routes.get(frame.get("d", {}).get("group_openid"))
                                 if route:
-                                    from hakimi.transport.official_groups import adapt_group
+                                    from hakimi.chat.official_groups import adapt_group
                                     route["active"] = False
                                     adapt_group(self.base, route)
                                     self.store.set("group_routes", self.routes)

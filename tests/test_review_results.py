@@ -3,7 +3,8 @@ import unittest
 
 import test_post_reply_review as fixtures
 from hakimi.console.payloads_review_history import review_history_payload
-from hakimi.memory import impression_events, post_reply_review, review_recovery, review_results
+from hakimi.memory import review_recovery, review_results
+from hakimi.curation import impression_events, post_reply_review
 
 
 class ReviewResultTests(unittest.TestCase):

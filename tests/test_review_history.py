@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 from hakimi.console.payloads_review_history import review_history_payload
 from hakimi.console.console_db import ApiError
-from hakimi.memory import impression_events, relationship_history, relationship_events
+from hakimi.memory import relationship_history, relationship_events
+from hakimi.curation import impression_events
 from hakimi.memory.memory_store import MemoryStore
 from hakimi.social.social_behavior import behavior_for
 from hakimi.social.social_schema import ensure_schema

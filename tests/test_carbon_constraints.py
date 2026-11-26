@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from hakimi.models.task_routing import select, FLASH, ARGON, CARBON
-from hakimi.bridge.reply_format import text_bubbles, clean_qq_markdown
+from hakimi.chat.reply_format import text_bubbles, clean_qq_markdown
 from hakimi.prompt.prompt_context import render_prompt, render_vertex_prompt
 from hakimi.models.carbon_session import PROTOCOL
 
@@ -127,7 +127,7 @@ class TestCarbonConstraints(unittest.TestCase):
 
     def test_anti_ai_cliche_prompt_and_bubble_trimming(self):
         from hakimi import paths
-        from hakimi.prompt.prompt_language import DEFENSIVE, instructions
+        from hakimi.persona.prompt_language import DEFENSIVE, instructions
         from hakimi.prompt.prompt_context import build_context
 
         for name in ('style_guide.md', 'gemini_persona.txt'):
@@ -181,10 +181,10 @@ class TestCarbonConstraints(unittest.TestCase):
 
     def test_soft_admin_compliance_echo_trim_and_dynamic_profile_social_awakening(self):
         import json
-        from hakimi.memory import impression_events
+        from hakimi.curation import impression_events
         from hakimi.prompt.group_profiles import resolve_profile
         from hakimi.prompt.prompt_context import admin_interaction_guidance, build_context
-        from hakimi.prompt.prompt_language import DEFENSIVE, instructions
+        from hakimi.persona.prompt_language import DEFENSIVE, instructions
         from hakimi.social.social_behavior import behavior_for
 
         # 1. Softened admin guidance survives instructions() filter and keeps obedience cues without DEFENSIVE regex
@@ -297,7 +297,7 @@ class TestCarbonConstraints(unittest.TestCase):
         from hakimi.memory import daily_events
         from hakimi.memory.memory_store import MemoryStore
         from hakimi.prompt.prompt_context import build_context
-        from hakimi.prompt.prompt_language import DEFENSIVE
+        from hakimi.persona.prompt_language import DEFENSIVE
         from hakimi.social.social_schema import ensure_schema
 
         now = time.time()

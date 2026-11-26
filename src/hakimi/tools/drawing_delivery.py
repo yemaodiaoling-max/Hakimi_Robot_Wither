@@ -8,12 +8,12 @@ import time
 from contextlib import closing, contextmanager, suppress
 from pathlib import Path
 
-from hakimi.bridge.interaction_policy import blocked_outgoing_topic
+from hakimi.chat.interaction_policy import blocked_outgoing_topic
 from hakimi.core.runtime_io import atomic_replace
 from hakimi.tools.drawing_accounting import IMAGE_QUOTA_ERRORS
 from hakimi.tools.drawing_intent import BRIEF_LIMIT, COOLDOWN_NOTE, TOOL, allows_generation, request_id, requested
 from hakimi.tools.drawing_settings import DRAWING_TIMEOUT_SECONDS
-from hakimi.transport.file_delivery import directory, from_segment, resolve
+from hakimi.chat.file_delivery import directory, from_segment, resolve
 
 IMAGE_EXTENSION = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp'}
 _PICTURE = re.compile(r'\[CQ:file,name=_drawing_([a-f0-9]{64})\.(?:png|jpg|webp),')

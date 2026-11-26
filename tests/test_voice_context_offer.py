@@ -65,10 +65,10 @@ class VoiceContextOfferTests(unittest.TestCase):
         p=payload('换个说法再念一次')
         p['recent_context_messages'][-1]['reply_to']='cold'
         (self.base/'state/voice.sqlite3').touch()
-        with patch('hakimi.voice.store.preview',return_value={'text':'同会话原文'}) as preview:
+        with patch('hakimi.memory.voice_receipts.preview',return_value={'text':'同会话原文'}) as preview:
             self.assertEqual(tts.offer_mode(p,self.base),'requested')
             preview.assert_called_once_with(self.base,'group:1','cold')
-        with patch('hakimi.voice.store.preview',return_value={}):
+        with patch('hakimi.memory.voice_receipts.preview',return_value={}):
             self.assertIsNone(tts.offer_mode(p,self.base))
 
     def test_visible_history_and_quotes_are_session_local(self):
@@ -96,12 +96,12 @@ class VoiceContextOfferTests(unittest.TestCase):
     def test_untranscribed_attachment_offers_without_autonomous_send(self):
         p=payload('[语音消息，voice.read message_id=current]')
         p['recent_context_messages'][-1]['voice_ref']='current'
-        with patch('hakimi.voice.store.preview',return_value={}) as preview:
+        with patch('hakimi.memory.voice_receipts.preview',return_value={}) as preview:
             self.assertEqual(tts.offer_mode(p,self.base),'context')
             preview.assert_not_called()
             self.assertIn('voice.speak',self.names(p))
             self.assertIsNone(tts.speech_mode(p,self.base))
-        with patch('hakimi.voice.store.preview',return_value={'text':'今天吃什么'}):
+        with patch('hakimi.memory.voice_receipts.preview',return_value={'text':'今天吃什么'}):
             self.assertEqual(tts.speech_mode(p,self.base),'optional')
 
     def test_cooldown_affects_sending_not_offer_and_is_session_local(self):
@@ -127,9 +127,9 @@ class VoiceContextOfferTests(unittest.TestCase):
             self.assertEqual(tts.offer_mode(payload(text,history),self.base),'context')
             self.assertIsNone(tts.speech_mode(payload(text,history),self.base))
         p=payload('再来一条',[row('native','[语音消息]',author='u2',voice_ref='native')])
-        with patch('hakimi.voice.store.preview',return_value={'text':'你好'}):
+        with patch('hakimi.memory.voice_receipts.preview',return_value={'text':'你好'}):
             self.assertEqual(tts.speech_mode(p,self.base),'requested')
-        with patch('hakimi.voice.store.preview',return_value={}):
+        with patch('hakimi.memory.voice_receipts.preview',return_value={}):
             self.assertIsNone(tts.speech_mode(p,self.base))
         # A distant ordinary mention of voice cannot turn an ambiguous followup into a request.
         history=[row('old','我喜欢语音'),row('a','a'),row('b','b'),row('c','c')]
@@ -148,7 +148,7 @@ class VoiceContextOfferTests(unittest.TestCase):
         self.assertEqual(tts.offer_mode(p,self.base),'context')
 
     def test_current_text_is_read_once_per_offer(self):
-        from hakimi.prompt import turn_text
+        from hakimi.chat import turn_text
         original=turn_text.current_text
         with patch.object(turn_text,'current_text',wraps=original) as current:
             self.assertEqual(tts.offer_mode(payload('想听听你的声音'),self.base),'requested')
@@ -190,16 +190,16 @@ class VoiceContextOfferTests(unittest.TestCase):
                 p=payload('语音挺好听')
                 claim={'token':'t','payload':p,'deadline':time.time()+90}
                 owner=Mock();owner.snapshot.return_value={};owner.check_token.return_value=False
-                with patch.object(tts,'prepare') as prepare,patch('hakimi.tools.math_render.log_tool_call'):
+                with patch.object(tts,'prepare') as prepare,patch('hakimi.core.tool_log.log_tool_call'):
                     self.assertEqual(tts.speak(self.base,claim,owner,provider,'晚安')['error'],'turn_expired')
                     prepare.assert_not_called()
                 owner.check_token.side_effect=[True,False]
-                with patch.object(tts,'prepare',return_value={'name':'test.silk'}),patch('hakimi.tools.math_render.log_tool_call'):
+                with patch.object(tts,'prepare',return_value={'name':'test.silk'}),patch('hakimi.core.tool_log.log_tool_call'):
                     self.assertEqual(tts.speak(self.base,claim,owner,provider,'晚安')['error'],'turn_expired')
                     owner.submit_reply.assert_not_called()
                 owner.check_token.side_effect=None;owner.check_token.return_value=True
                 owner.submit_reply.return_value={'accepted':True}
-                with patch.object(tts,'prepare',return_value={'name':'test.silk'}),patch('hakimi.tools.math_render.log_tool_call'):
+                with patch.object(tts,'prepare',return_value={'name':'test.silk'}),patch('hakimi.core.tool_log.log_tool_call'):
                     self.assertTrue(tts.speak(self.base,claim,owner,provider,'晚安')['ok'])
                     self.assertEqual(tts.speak(self.base,claim,owner,provider,'晚安')['error'],'already_replied')
                     owner.submit_reply.assert_called_once_with('t',[],provider,files=[{'name':'test.silk'}])

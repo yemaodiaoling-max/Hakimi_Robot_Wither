@@ -1,6 +1,6 @@
 """Deliver completed receipts on the ordinary bridge loop, never an ASR thread."""
 import asyncio,re,time
-from hakimi.voice import store
+from hakimi.memory import voice_receipts as store
 
 async def deliver(base,process_event):
     while True:

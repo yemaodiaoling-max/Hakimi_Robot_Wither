@@ -12,7 +12,7 @@ from hakimi.features import diary_daily as diary
 from hakimi.memory import bili_autobiography as bili_auto
 from hakimi.memory.memory_store import MemoryStore
 from hakimi.prompt.prompt_context import build_context
-from hakimi.prompt.prompt_language import context as positive_context
+from hakimi.persona.prompt_language import context as positive_context
 
 
 def _write_autobiography(base: Path, episodes: list[dict], *, generated_at: float) -> Path:

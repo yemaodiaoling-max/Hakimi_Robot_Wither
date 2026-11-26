@@ -59,7 +59,7 @@ class BehaviorWiringTests(unittest.TestCase):
 class ReviewCompatibilityTests(unittest.TestCase):
  def test_completed_legacy_marker_does_not_block_review(self):
   from hakimi.bridge.turn_coordinator import TurnCoordinator
-  from hakimi.memory.personal_review import _backlog
+  from hakimi.curation.personal_review import _backlog
   with tempfile.TemporaryDirectory() as d:
    base=Path(d);c=TurnCoordinator(base)
    result=c.publish({'session_key':'group:100','recent_context_messages':[]})

@@ -57,7 +57,7 @@ def save(base,day,title,text,image_prompt,provider):
     day=day_value(day)
     if not all(isinstance(x,str) and x.strip() for x in (title,text,image_prompt)):raise ValueError('日记字段不能为空')
     if len(title)>80 or len(text)>6000 or len(image_prompt)>400:raise ValueError('日记或配图描述过长')
-    from hakimi.bridge.interaction_policy import blocked_outgoing_topic
+    from hakimi.chat.interaction_policy import blocked_outgoing_topic
     if blocked_outgoing_topic(title+text+image_prompt):raise ValueError('ignored_topic')
     root=folder(base)/day;root.mkdir(parents=True,exist_ok=True)
     if (root/'entry.json').exists():return read_entry(base,day)
@@ -149,7 +149,7 @@ def requested_export(payload,base):
 
 def submit_export(coordinator,token,provider,spec,base,segments=()):
     from hakimi.features.diary_latex import compile_pdf
-    from hakimi.transport.file_delivery import directory
+    from hakimi.chat.file_delivery import directory
     if not coordinator.check_token(token,provider):return {'accepted':False,'reason':'stale_owner'}
     spec=export_spec(spec);rows=entries(base,**spec)
     if not rows:raise ValueError('指定日期范围内还没有日记')
@@ -169,7 +169,7 @@ def latest_image(base,session):
     from PIL import Image
     import pymupdf
     from hakimi.features.diary_latex import compile_pdf
-    from hakimi.transport.image_permissions import register_cached_image
+    from hakimi.chat.image_permissions import register_cached_image
     row=read_entry(base)
     key=hashlib.sha256(json.dumps([row['day'],row['title'],row['text'],row.get('image_sha256','')],ensure_ascii=False).encode()).hexdigest()[:16]
     cache=Path(base)/'state/img_cache';cache.mkdir(parents=True,exist_ok=True)
@@ -194,7 +194,7 @@ def latest_image(base,session):
 
 def cleanup(segments,base,reply_id,status):
     """Called only on terminal delivery states; definitely-unsent queued PDFs stay available."""
-    from hakimi.transport.file_delivery import SEGMENT,directory
+    from hakimi.chat.file_delivery import SEGMENT,directory
     found=False
     for text in segments:
         match=SEGMENT.fullmatch(text)

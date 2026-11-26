@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from hakimi.core.self_reply_context import with_recent_own_replies
+from hakimi.chat.self_reply_context import with_recent_own_replies
 
 
 class SelfReplyContextTests(unittest.TestCase):

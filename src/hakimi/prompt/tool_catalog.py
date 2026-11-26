@@ -107,7 +107,7 @@ TOOLS = [
     tool("turn.failure", "仅宿主明确报模型余额、鉴权或不可用错误时登记，交给备用端。", {
         "reason": field("实际宿主错误类型", enum=["quota", "auth", "model_error", "unavailable"])}, ("reason",)),
 ]
-from hakimi.prompt.prompt_language import schema as positive_schema
+from hakimi.persona.prompt_language import schema as positive_schema
 TOOLS = positive_schema(TOOLS)
 BY_NAME = {item["name"]: item for item in TOOLS}
 

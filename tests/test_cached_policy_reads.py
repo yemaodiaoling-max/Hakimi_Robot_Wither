@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import Mock
 
 from hakimi.core.runtime_io import read_derived_cached, invalidate
-from hakimi.bridge import quote_policy
+from hakimi.chat import quote_policy
 from hakimi.tools import sticker_policy
 
 

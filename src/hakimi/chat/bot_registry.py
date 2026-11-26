@@ -46,7 +46,7 @@ def platform(base,uid,nickname,session):
             (str(uid),nickname,session,time.time()))
 
 def propose(base,payload,name,reason=''):
-    from hakimi.transport.member_mentions import resolve
+    from hakimi.chat.member_mentions import resolve
     result=resolve(base,payload,name)
     if not result['ok']:return result
     member=result['member'];uid=member['user_id'];old=labels(base).get(uid,{})

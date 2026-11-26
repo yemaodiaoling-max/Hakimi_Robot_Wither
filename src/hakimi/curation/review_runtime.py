@@ -152,7 +152,7 @@ def _classify_companion_duty(text, base, config_path=None):
 
 
 def classify(task, base):
-    from hakimi.prompt.prompt_language import prompt
+    from hakimi.persona.prompt_language import prompt
     with _slot:
         text = prompt(task)
         if len(text.encode('utf-8')) > 64000:

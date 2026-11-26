@@ -3,7 +3,7 @@ import array,io,json,math,os,subprocess,sys,wave
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request,build_opener,ProxyHandler
-from hakimi.transport.official_base import NoRedirect
+from hakimi.chat.official_base import NoRedirect
 
 def approved(url):
     try:

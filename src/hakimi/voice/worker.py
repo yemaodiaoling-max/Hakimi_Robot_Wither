@@ -2,7 +2,7 @@
 import fcntl,json,os,select,subprocess,sys,time
 from pathlib import Path
 from hakimi import paths
-from hakimi.voice import store
+from hakimi.memory import voice_receipts as store
 
 class Recognizer:
     def __init__(self,base,cfg):self.base=Path(base);self.cfg=cfg;self.process=None

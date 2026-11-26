@@ -910,7 +910,7 @@ def handle_chat(req: dict) -> dict:
     # Split bubbles on '|' and apply the shared anti-AI bubble filter from QQ Hakimi.
     bubbles = [b.strip() for b in re.split(r"\s*\|\s*", reply_text) if b.strip()]
     try:
-        from hakimi.bridge.reply_format import clean_ai_cliche_bubbles
+        from hakimi.chat.reply_format import clean_ai_cliche_bubbles
         cleaned = clean_ai_cliche_bubbles(bubbles)
         if cleaned:
             bubbles = cleaned

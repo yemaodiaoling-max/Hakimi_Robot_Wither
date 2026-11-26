@@ -5,7 +5,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from hakimi.memory import daily_events, impression_events, relationship_events
+from hakimi.memory import daily_events, relationship_events
+from hakimi.curation import impression_events
 from hakimi.memory.memory_store import MemoryStore
 from hakimi.social.social_schema import ensure_schema
 

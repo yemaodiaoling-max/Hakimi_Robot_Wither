@@ -3,7 +3,7 @@ def save_proposal(result,claim,coordinator,base):
     """The compact reply+memory form also writes before any 'remembered' reply is queued."""
     if not result.get('memory'):return None
     if not coordinator.check_token(claim['token'],'dsh'):raise ValueError('本轮已过期')
-    from hakimi.voice.store import has_voice,scoped_saved_receipt
+    from hakimi.memory.voice_receipts import has_voice,scoped_saved_receipt
     if has_voice(base,claim['payload']):return scoped_saved_receipt()
     from hakimi.memory.smart_memory import remember_memory,visible_users
     from hakimi.core.context_window import select_context

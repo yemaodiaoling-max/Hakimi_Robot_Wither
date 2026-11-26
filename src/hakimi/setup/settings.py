@@ -652,7 +652,7 @@ def _apply_video(base, s):
         "bridge_database": str(state / "bridge" / "bilibili_bridge.sqlite3"),
         "auth_state_dir": str(state / "private" / "auth"),
         "gateway_key_file": str(directory() / KEY_NAME), "gateway_ca_file": str(directory() / CA_NAME),
-        "persona_dir": str(__import__("hakimi.persona.catalog", fromlist=["x"]).video_persona_dir()),
+        "persona_dir": str(__import__("hakimi.setup.persona_catalog", fromlist=["x"]).video_persona_dir()),
         "monitor_seconds": 120, "chunk_seconds": 30, "live_observation_seconds": 90,
         "video_observation_seconds": 180, "video_native_vertex_model": "gemini-3.5-flash-lite",
         "budget_scope": "autonomous_video_only", "monthly_usd": v["monthly_usd"], "daily_usd": v["daily_usd"],

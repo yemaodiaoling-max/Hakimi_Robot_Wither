@@ -16,10 +16,10 @@ import re
 import sqlite3
 import time
 import uuid
-from hakimi.bridge.group_reply_quota import (GROUP_REPLY_HISTORY, GROUP_HOURLY_LIMIT_REASON,
+from hakimi.chat.group_reply_quota import (GROUP_REPLY_HISTORY, GROUP_HOURLY_LIMIT_REASON,
                                GroupReplyQuota, is_group_session)
-from hakimi.bridge.reply_format import MAX_REPLY_SEGMENTS, MAX_SEGMENT_CHARS
-from hakimi.bridge import user_reply_quota
+from hakimi.chat.reply_format import MAX_REPLY_SEGMENTS, MAX_SEGMENT_CHARS
+from hakimi.chat import user_reply_quota
 from hakimi.core.runtime_io import read_json_cached, atomic_replace
 from hakimi.models.provider_health import ProviderHealth, availability
 
@@ -113,7 +113,7 @@ class TurnCoordinator:
                  lock_timeout_seconds=10):
         self.base_dir = Path(base_dir).resolve()
         self.state_dir = self.base_dir / "state"
-        from hakimi.bridge.turn_lanes import lane_id
+        from hakimi.chat.turn_lanes import lane_id
         self.lane_id = lane_id()
         self.root_state_path = self.state_dir / "turn_state.json"
         self.state_path = self.root_state_path if not self.lane_id else self.state_dir / 'turn_lanes' / (self.lane_id+'.json')
@@ -132,7 +132,7 @@ class TurnCoordinator:
 
     @staticmethod
     def lane_ids():
-        from hakimi.bridge.turn_lanes import LANES
+        from hakimi.chat.turn_lanes import LANES
         return LANES
 
     def for_lane(self, lane):
@@ -147,7 +147,7 @@ class TurnCoordinator:
         return [self.for_lane(lane).snapshot() for lane in self.lane_ids()]
 
     def any_lane_active(self):
-        from hakimi.bridge.turn_lanes import ACTIVE
+        from hakimi.chat.turn_lanes import ACTIVE
         return any(state.get('status') in ACTIVE for state in self.snapshots())
 
     def was_superseded(self, trigger_id):
@@ -166,7 +166,7 @@ class TurnCoordinator:
         return any(r.get('trigger_id') == trigger_id and r.get('outcome') == 'superseded' for r in rows)
 
     def available_lane(self, payload):
-        from hakimi.bridge.turn_lanes import ACTIVE, explicit_at
+        from hakimi.chat.turn_lanes import ACTIVE, explicit_at
         preferred = payload.get('conversation_lane', '')
         if preferred not in self.lane_ids():return None
         states = {lane: self.for_lane(lane)._poll_hint() for lane in self.lane_ids()}
@@ -789,7 +789,7 @@ class TurnCoordinator:
         return result
 
     def _replace_active(self, payload, replace_trigger_id):
-        from hakimi.bridge.turn_lanes import ACTIVE
+        from hakimi.chat.turn_lanes import ACTIVE
 
         rejected = {'accepted': False, 'reason': 'replacement_unavailable'}
         payload = json.loads(json.dumps(payload, ensure_ascii=False, allow_nan=False))
@@ -863,7 +863,7 @@ class TurnCoordinator:
             if replacing and sources & answered:
                 return {'accepted': False, 'reason': 'source_already_answered'}
             if sources <= answered:
-                from hakimi.bridge.message_lifecycle import record
+                from hakimi.chat.message_lifecycle import record
                 record(self.base_dir, payload, 'cancelled', reason='source_already_answered')
                 return {'accepted': False, 'reason': 'source_already_answered'}
         now = self.clock()
@@ -883,7 +883,7 @@ class TurnCoordinator:
             return {"accepted": False, "status": "expired", "reason": "expired", "trigger_id": trigger_id}
         wait = self._user_reply_wait(state, payload)
         if wait:
-            from hakimi.bridge.message_lifecycle import record
+            from hakimi.chat.message_lifecycle import record
             record(self.base_dir,payload,'cancelled',reason='user_reply_limit',retry_after=wait)
             return {'accepted': False, 'status': state['status'],
                     'reason': user_reply_quota.LIMIT_REASON, 'retry_after': wait,
@@ -920,7 +920,7 @@ class TurnCoordinator:
             self._flush_turn_events(state, share=False)
         else:
             self._save(state)
-        from hakimi.bridge.message_lifecycle import record
+        from hakimi.chat.message_lifecycle import record
         record(self.base_dir,payload,'published',trigger_id=trigger_id)
         return {"accepted": True, "status": "queued", "trigger_id": trigger_id}
 
@@ -1149,7 +1149,7 @@ class TurnCoordinator:
             return True
 
     def renew_carbon_wait(self, token, end, *, rolling=False, hard_expires_at=None):
-        from hakimi.bridge.turn_lanes import active_context_path
+        from hakimi.chat.turn_lanes import active_context_path
         with self._locked():
             state = self._load_ready()
             if not self._matches(state, token, 'gemini'):
@@ -1230,7 +1230,7 @@ class TurnCoordinator:
                 # neither a user reply nor evidence that the primary is down.
                 self._finish(state, "no_reply")
                 return True
-            from hakimi.bridge.message_lifecycle import record
+            from hakimi.chat.message_lifecycle import record
             record(self.base_dir,payload,'generation_error',trigger_id=state.get('trigger_id'),reason=reason)
             state["failure"] = {"provider": state["provider"], "reason": reason, "at": self.clock()}
             if state["status"] == "fallback_active":
@@ -1248,20 +1248,20 @@ class TurnCoordinator:
             return True
 
     def submit_reply(self, token, segments, provider, files=None, reply_to=None, rendered_math=False, interaction=None, *, mention_user=None, generated_drawing=False):
-        from hakimi.bridge.interaction_policy import blocked_outgoing_topic
+        from hakimi.chat.interaction_policy import blocked_outgoing_topic
         if isinstance(segments,list) and all(isinstance(text,str) for text in segments) and blocked_outgoing_topic(''.join(segments)):
             return {'accepted':False,'reason':'ignored_topic'}
         if (not isinstance(segments, list) or (not rendered_math and len(segments) > MAX_REPLY_SEGMENTS)
                 or (not segments and not files)
                 or any(not isinstance(text, str) or not text.strip() or len(text) > MAX_SEGMENT_CHARS for text in segments)):
             return {"accepted": False, "reason": "invalid_segments"}
-        from hakimi.bridge.mention_segments import attach_recipient, leading_local_id, UNRESOLVED
+        from hakimi.chat.mention_segments import attach_recipient, leading_local_id, UNRESOLVED
         typed_uid = leading_local_id(segments)
         typed_member = False
         if typed_uid and mention_user is None:
             state = self.snapshot()
             if self._matches(state, token, provider) and state['payload'].get('session_key', '').startswith('group:'):
-                from hakimi.transport.member_mentions import known_local_member
+                from hakimi.chat.member_mentions import known_local_member
                 typed_member = known_local_member(self.base_dir, state['payload'], typed_uid)
         if not files and not (rendered_math or generated_drawing):
             state=self.snapshot()
@@ -1318,18 +1318,18 @@ class TurnCoordinator:
                     if stream.read(1) != b"\n":
                         return {"accepted": False, "reason": "outbox_incomplete_record"}
             if files:
-                from hakimi.transport.file_delivery import stage
+                from hakimi.chat.file_delivery import stage
                 if not isinstance(files, list) or (not rendered_math and len(segments)+len(files) > MAX_REPLY_SEGMENTS):
                     return {"accepted": False, "reason": "too_many_segments"}
                 try:
                     segments = segments+stage(files, payload, self.base_dir)
                 except (ValueError, OSError) as exc:
                     return {"accepted": False, "reason": "file_error: "+str(exc)[:180]}
-            from hakimi.bridge.reply_format import limit_group_reply
+            from hakimi.chat.reply_format import limit_group_reply
             segments = limit_group_reply(segments, session_key, read_json_cached(self.base_dir / 'config.json', {}))
             if not segments:
                 return {"accepted": False, "reason": "empty_group_reply"}
-            from hakimi.bridge.bot_registry import target as bot_target,cooling,shape
+            from hakimi.chat.bot_registry import target as bot_target,cooling,shape
             bot=bot_target(self.base_dir,payload,segments,reply_to)
             if bot:
                 if cooling(self.base_dir,bot,self.clock()):return {'accepted':False,'reason':'bot_cooldown'}
@@ -1360,7 +1360,7 @@ class TurnCoordinator:
             if not record['is_proactive'] and re.fullmatch(r'-?\d{1,20}', target):
                 record['reply_target_id'] = target
             if not record['is_proactive']:
-                from hakimi.bridge.interaction_policy import annotation
+                from hakimi.chat.interaction_policy import annotation
                 try:record['interaction']=annotation(payload,interaction,self.base_dir,target)
                 except ValueError as exc:return {'accepted':False,'reason':str(exc)}
             if bot:record['interaction']={'user_id':bot,'kind':'ai','bot_target':bot}

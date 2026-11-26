@@ -212,9 +212,9 @@ def recent_messages(base, session='', scope=None):
     if session:incoming=[r for r in incoming if r.get('session_key')==session]
     originals={(r.get('session_key'),str(r.get('message_id'))):r for r in archived_messages(state,session,scope)}
     originals.update({(r.get('session_key'),str(r.get('message_id'))):r for r in incoming})
-    from hakimi.voice.store import recent_status as voice_status
+    from hakimi.memory.voice_receipts import recent_status as voice_status
     speech_rows=voice_status(base,session)
-    from hakimi.voice.store import console_previews
+    from hakimi.memory.voice_receipts import console_previews
     voice_previews=console_previews(base,session)
     speech_status={(r['session'],str(r['mid'])):r for r in speech_rows}
     speech_rows=[r for r in speech_rows if r.get('session','').startswith(scope+':') and (not session or r.get('session')==session)]

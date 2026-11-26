@@ -88,7 +88,7 @@ def _restart(units) -> bool:
 
 def _persona(data):
     """list | read | save | reset one editable persona file."""
-    from hakimi.persona import catalog
+    from hakimi.setup import persona_catalog as catalog
     action, name = data.get("action", "list"), str(data.get("file", ""))
     if action == "list":
         return {"entries": catalog.listing()}

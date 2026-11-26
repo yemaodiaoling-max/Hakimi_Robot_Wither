@@ -661,7 +661,7 @@ def run_cycle(base, now=None, *, runner=None, budget=None, force=False):
     relation_signature = _relation_signature(relations)
     relation_due = bool(relations)
     style_due = bool(dsh and gemini)
-    from hakimi.bridge.bot_registry import candidates as bot_candidates,apply_reviews,BOT_REVIEW_SCHEMA
+    from hakimi.chat.bot_registry import candidates as bot_candidates,apply_reviews,BOT_REVIEW_SCHEMA
     bots=bot_candidates(base)
     if not style_due and not relation_due and not trial and not bots:
         state.update(next_due=now + CYCLE_SECONDS,

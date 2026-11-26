@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import time
 
-from hakimi.transport.official_base import fixed_json, OfficialError
+from hakimi.chat.official_base import fixed_json, OfficialError
 
 
 def read(path, default):

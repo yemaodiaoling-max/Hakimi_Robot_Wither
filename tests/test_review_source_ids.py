@@ -1,7 +1,7 @@
 import json
 import unittest
 import test_post_reply_review as fixture_module
-from hakimi.memory import post_reply_review as review
+from hakimi.curation import post_reply_review as review
 
 
 class SourceIdTests(unittest.TestCase):

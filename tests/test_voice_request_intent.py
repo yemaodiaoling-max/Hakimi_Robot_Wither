@@ -64,7 +64,7 @@ class VoiceRequestIntentTests(unittest.TestCase):
     def test_native_voice_optional_keeps_text_only_veto(self):
         p=payload('只用文字回答')
         p['recent_context_messages'][0]['voice_ref']='m1'
-        with patch('hakimi.voice.store.preview',return_value={'text':'只用文字回答'}):
+        with patch('hakimi.memory.voice_receipts.preview',return_value={'text':'只用文字回答'}):
             self.assertIsNone(tts.speech_mode(p,Path('.')))
 
     def test_gemini_selection_uses_shared_intent(self):
@@ -86,7 +86,7 @@ class VoiceRequestIntentTests(unittest.TestCase):
                 def prepare(base,incoming,text,timeout):
                     self.assertEqual(tts.speech_mode(incoming,base),'requested')
                     return {'name':'test.silk'}
-                with patch.object(tts,'prepare',side_effect=prepare) as generated, patch('hakimi.tools.math_render.log_tool_call'):
+                with patch.object(tts,'prepare',side_effect=prepare) as generated, patch('hakimi.core.tool_log.log_tool_call'):
                     self.assertTrue(tts.speak(Path('.'),claim,owner,provider,'你好')['ok'])
                     generated.assert_called_once()
                 owner.submit_reply.assert_called_once_with('token',[],provider,files=[{'name':'test.silk'}])
@@ -96,7 +96,7 @@ class VoiceRequestIntentTests(unittest.TestCase):
             with self.subTest(ok=ok):
                 claim={'payload':payload('用语音对群友63cb说晚安')}
                 result={'ok':True,'voice':{'backend':'gpt-sovits','text':'DO_NOT_LOG'}} if ok else {'error':'voice_deadline_use_text'}
-                with patch.object(tts,'_speak',return_value=result), patch('hakimi.tools.math_render.log_tool_call') as log:
+                with patch.object(tts,'_speak',return_value=result), patch('hakimi.core.tool_log.log_tool_call') as log:
                     self.assertIs(tts.speak(Path('.'),claim,Mock(),'dsh','SECRET_TEXT'),result)
                     log.assert_called_once()
                     fields=log.call_args.kwargs
@@ -112,24 +112,24 @@ class VoiceRequestIntentTests(unittest.TestCase):
         claim={'payload':payload('发语音')}
         failure={'error':'voice_text_must_be_short_plain_text'}
         success={'ok':True,'voice':{'backend':'gpt-sovits'}}
-        with patch.object(tts,'_speak',side_effect=[failure,success]), patch('hakimi.tools.math_render.log_tool_call') as log:
+        with patch.object(tts,'_speak',side_effect=[failure,success]), patch('hakimi.core.tool_log.log_tool_call') as log:
             self.assertIs(tts.speak(Path('.'),claim,Mock(),'dsh','x'*81),failure)
             self.assertIs(tts.speak(Path('.'),claim,Mock(),'dsh','你好'),success)
             self.assertEqual([call.args[2] for call in log.call_args_list],['error','ok'])
         claim={'payload':payload('发语音'),'_reply_submitted':True}
-        with patch.object(tts,'_speak',return_value={'error':'already_replied'}), patch('hakimi.tools.math_render.log_tool_call') as log:
+        with patch.object(tts,'_speak',return_value={'error':'already_replied'}), patch('hakimi.core.tool_log.log_tool_call') as log:
             tts.speak(Path('.'),claim,Mock(),'dsh','你好')
             log.assert_not_called()
 
     def test_early_rejection_and_exception_are_visible_without_changing_result(self):
         owner=Mock();owner.check_token.return_value=False
         claim={'token':'DO_NOT_LOG','payload':payload('发语音')}
-        with patch('hakimi.tools.math_render.log_tool_call') as log:
+        with patch('hakimi.core.tool_log.log_tool_call') as log:
             self.assertEqual(tts.speak(Path('.'),claim,owner,'gemini','DO_NOT_LOG'),{'error':'turn_expired'})
             self.assertEqual(log.call_args.kwargs['error'],'turn_expired')
             self.assertNotIn('DO_NOT_LOG',str(log.call_args))
         claim={'payload':payload('发语音')}
-        with patch.object(tts,'_speak',side_effect=ValueError('DO_NOT_LOG')), patch('hakimi.tools.math_render.log_tool_call') as log:
+        with patch.object(tts,'_speak',side_effect=ValueError('DO_NOT_LOG')), patch('hakimi.core.tool_log.log_tool_call') as log:
             with self.assertRaisesRegex(ValueError,'DO_NOT_LOG'):
                 tts.speak(Path('.'),claim,owner,'gemini')
             self.assertEqual(log.call_args.kwargs['error'],'voice_exception_ValueError')

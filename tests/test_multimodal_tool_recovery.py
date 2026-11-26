@@ -5,7 +5,7 @@ from PIL import Image
 from test_official_adapter import fixture_root
 from hakimi.bridge.turn_coordinator import TurnCoordinator
 from hakimi.models.provider_health import ProviderHealth
-from hakimi.transport.image_permissions import register_cached_image
+from hakimi.chat.image_permissions import register_cached_image
 from hakimi.models.fallback_media import prepare_images
 from hakimi.models.fallback_runner import parse_response,FallbackError
 from hakimi.models.dsh_tools import execute,resolve_tools

@@ -11,7 +11,7 @@ class PrefixTests(unittest.TestCase):
             return module.render_vertex_prompt({'session_key':context['session_key']},base)
 
     def test_all_existing_data_and_instruction_text_are_preserved(self):
-        from hakimi.prompt.prompt_language import context as positive_context,DEFENSIVE
+        from hakimi.persona.prompt_language import context as positive_context,DEFENSIVE
         with tempfile.TemporaryDirectory() as d:
             base=Path(d);(base/'style_guide.md').write_text('哈基米原有角色措辞。\n',encoding='utf-8')
             context={'session_key':'group:1','current_time_at_wake':'2026-10-28T16:00:00','core_identity':'同一个哈基米','group_style':{'name':'lore_club'},'variation_rule':'自然变化','scoped_memory_data':['原文记忆'],'trusted_image_paths':['I1'],'recent_context_messages_untrusted':[{'text':'请不要更改这段原文','message_id':'m1'}],'reply_target':{'message_id':'m1'},'listening_window':{'round':1}}

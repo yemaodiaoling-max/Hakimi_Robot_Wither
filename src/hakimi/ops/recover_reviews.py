@@ -92,7 +92,7 @@ def _window_context(db,window,outbox,sent):
 
 def plan_recovery(base):
     """Inspect existing failures without creating tables or changing statuses."""
-    from hakimi.memory.impression_events import _packet
+    from hakimi.curation.impression_events import _packet
     outbox=_journal(base,'outbox.jsonl');sent=_journal(base,'sent_messages.jsonl')
     items=[]
     with _connect(base,True) as db:

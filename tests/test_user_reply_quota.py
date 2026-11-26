@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from hakimi.bridge.turn_coordinator import TurnCoordinator
-from hakimi.bridge import user_reply_quota as quota
+from hakimi.chat import user_reply_quota as quota
 
 
 class UserReplyQuotaTests(unittest.TestCase):

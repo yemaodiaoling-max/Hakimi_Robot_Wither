@@ -192,7 +192,7 @@ class SingleApiDefaultsTests(unittest.TestCase):
             from hakimi.bridge import conversation_judge as judge
             from hakimi.features import diary_daily
             from hakimi.models import aux_config, search_routing, vertex_route, video_hydrogen, web_access
-            from hakimi.memory import review_runtime
+            from hakimi.curation import review_runtime
             from hakimi.setup import settings as st
 
             s, secrets = st.normalise(
@@ -279,7 +279,7 @@ class SingleApiDefaultsTests(unittest.TestCase):
 class IndependentAuxModesTests(unittest.TestCase):
     def test_custom_review_backup_fallback_and_ops_flags(self):
         with _Env() as env:
-            from hakimi.memory import post_reply_review, review_runtime
+            from hakimi.curation import post_reply_review, review_runtime
             from hakimi.models import aux_config, fallback_http, video_hydrogen
             from hakimi.ops import cloud_supervisor
 

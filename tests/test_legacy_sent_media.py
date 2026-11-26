@@ -4,7 +4,7 @@ import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
 
-from hakimi.transport.legacy_sent_media import legacy_media_segments
+from hakimi.chat.legacy_sent_media import legacy_media_segments
 
 
 IMAGE = '[CQ:image,file=file:///bot/stickers/collected/example.jpg,sub_type=1]'

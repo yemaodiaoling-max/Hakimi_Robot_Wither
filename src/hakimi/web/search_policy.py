@@ -5,22 +5,10 @@ import queue
 import re
 import threading
 
-from hakimi.prompt.turn_text import current_text
+from hakimi.chat.turn_text import current_text, network_allowed  # noqa: F401  (network_allowed re-exported)
 from hakimi.core.jsonio import read_json
 
 _JUDGES = threading.BoundedSemaphore(2)
-
-
-def network_allowed(payload,base=None):
-    if payload.get('allow_network') is False or payload.get('network_allowed') is False:
-        return False
-    text=current_text(payload,directives_only=True,base=base)
-    forbidden=(r'(?:不要|别|不许|禁止|无需|不用|不必|不准|不需要|不得|不能|勿).{0,5}(?:联网|上网|搜|查|检索|访问网页)',
-               r'(?:不联网|不上网)(?:回答|也|直接|，|,|。|$)',
-               r'(?:只|仅)(?:用|根据|凭).{0,8}(?:已有知识|现有知识|本地资料|下面材料|我贴的|我给的|我提供的)',
-               r'(?:仅|只|就)?(?:用|凭|根据)(?:你的|已有的|已有|现有)?记忆(?:回答|作答|就行|即可)?|离线(?:回答|作答|处理|模式)',
-               r"\b(?:do not|don't|without|no)\s+(?:use\s+)?(?:web|internet|browsing|search)|\boffline only\b")
-    return not any(re.search(pattern,text,re.I) for pattern in forbidden)
 
 
 def explicit_search(text):

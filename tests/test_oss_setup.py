@@ -154,7 +154,7 @@ class PersonaTests(unittest.TestCase):
     def test_override_wins_and_reset_restores_default(self):
         with _Env() as env:
             from hakimi import paths, persona
-            from hakimi.persona import catalog
+            from hakimi.setup import persona_catalog as catalog
             default = catalog.read("gemini_persona.txt")
             self.assertFalse(default["custom"])
             self.assertTrue(default["text"])
@@ -173,14 +173,14 @@ class PersonaTests(unittest.TestCase):
                 catalog.save("../config.json", "x")
 
     def test_every_catalog_entry_has_a_packaged_default(self):
-        from hakimi.persona import catalog
+        from hakimi.setup import persona_catalog as catalog
         for entry in catalog.ENTRIES:
             if not entry.file.startswith("video/"):
                 self.assertTrue(catalog.default_path(entry.file).is_file(), entry.file)
 
     def test_video_persona_folder_switches_when_customised(self):
         with _Env() as env:
-            from hakimi.persona import catalog
+            from hakimi.setup import persona_catalog as catalog
             defaults = env.video / "personas"
             defaults.mkdir(parents=True)
             (defaults / "hakimi_core.md").write_text("核心", encoding="utf-8")

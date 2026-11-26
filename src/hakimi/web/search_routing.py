@@ -3,7 +3,7 @@ import json
 import re
 import time
 
-from hakimi.prompt.turn_text import current_text
+from hakimi.chat.turn_text import current_text
 from hakimi.web.search_policy import config,decide,network_allowed,compact_query
 from hakimi.web import web_sources
 

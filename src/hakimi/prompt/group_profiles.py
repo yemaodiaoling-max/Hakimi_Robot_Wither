@@ -41,7 +41,7 @@ def _dynamic_group_profile(base: Path, session_key: str, target: str, group: dic
     gw = config.get("group_weights", {}).get(target, {})
     group_name = str(group.get("name") or gw.get("name") or "")
     group_theme = str(group.get("theme") or gw.get("theme") or "")
-    from hakimi.transport.official_groups import infer_profile
+    from hakimi.chat.official_groups import infer_profile
     inferred = infer_profile(group_name, group_theme)
     if inferred != "quiet_default":
         return inferred
@@ -64,7 +64,7 @@ def resolve_profile(session_key, base=BASE_DIR):
     default_name = cfg.get("private_profile" if kind == "private" else "default_profile", "quiet_default")
     name = group.get("profile", default_name)
     from hakimi.core.runtime_io import read_json_cached
-    from hakimi.bridge.reply_format import group_reply_rules
+    from hakimi.chat.reply_format import group_reply_rules
     config = read_json_cached(base / "config.json", {})
     profiles = cfg.get("profiles", {})
     if kind == "group" and (

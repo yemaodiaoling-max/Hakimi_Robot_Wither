@@ -19,7 +19,7 @@ import threading
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
-from hakimi.bridge.reply_format import MAX_REPLY_TEXT_CHARS
+from hakimi.chat.reply_format import MAX_REPLY_TEXT_CHARS
 from hakimi.core.process_job import WindowsJob
 
 BASE_DIR = paths.base()
@@ -528,7 +528,7 @@ def parse_response(raw):
         except ValueError as exc:raise FallbackError('FALLBACK_MATH_INVALID') from exc
     if "files" in result:
         if result["action"] != "reply":raise FallbackError("FALLBACK_FILES_INVALID")
-        from hakimi.transport.file_delivery import validate_specs
+        from hakimi.chat.file_delivery import validate_specs
         try:response["files"] = validate_specs(result["files"])
         except ValueError as exc:raise FallbackError("FALLBACK_FILES_INVALID") from exc
     if result["action"] in {"reply", "silent"} and "memory" in result:
@@ -568,7 +568,7 @@ def run_fallback(prompt, base=BASE_DIR, *, timeout_seconds=None, images=None):
         installation = discover_installation()
         provider = _provider(installation)
         runtime = prepare_runtime(base, installation, provider, images=images)
-        from hakimi.prompt.prompt_language import prompt as positive_prompt
+        from hakimi.persona.prompt_language import prompt as positive_prompt
         task = 'Return one JSON object with action and text, using the tool protocol in the current task.\n'+positive_prompt(prompt)
         raw = (_invoke(task, runtime, installation, provider) if timeout_seconds is None else
                _invoke(task, runtime, installation, provider, timeout_seconds=timeout_seconds))

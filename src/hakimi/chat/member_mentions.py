@@ -130,7 +130,7 @@ def mention(base,coordinator,token,provider,name,text=''):
             'nickname': nick,
             'hint': f'已选中成员【{nick}】。请只写要发送的正文，程序会在本轮发送时自动提及该成员。'
         }
-    from hakimi.bridge.reply_format import text_bubbles
+    from hakimi.chat.reply_format import text_bubbles
     parts=text_bubbles(text_clean) or [text_clean]
     receipt=coordinator.submit_reply(token,parts,provider,mention_user=uid)
     return {'ok':True,'sent':True,**result['member']} if receipt['accepted'] else {'ok':False,'error':receipt['reason']}

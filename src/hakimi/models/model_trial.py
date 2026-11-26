@@ -56,7 +56,7 @@ def packet(base,now=None):
 
 def save_review(base,packet,comparison,now):
     if not isinstance(comparison,dict) or comparison.get('verdict') not in {'continue','restore','collecting'}:raise ValueError('trial_comparison_invalid')
-    from hakimi.prompt.prompt_language import instructions
+    from hakimi.persona.prompt_language import instructions
     t=state(base);summary=str(comparison.get('summary',''))[:500]
     recommendations=[instructions(value)[:250] for value in comparison.get('recommendations',[])[:3]]
     result={'at':now,'trial_id':t['id'],'model':LITE,'baseline_model':BASELINE,'final':packet['final'],'statistics':packet['statistics'],

@@ -11,7 +11,7 @@ import re
 import sqlite3
 import time
 from pathlib import Path
-from hakimi.bridge.reply_format import MAX_REPLY_SEGMENTS, MAX_SEGMENT_CHARS
+from hakimi.chat.reply_format import MAX_REPLY_SEGMENTS, MAX_SEGMENT_CHARS
 
 
 DEFAULT_POLICY = {
@@ -98,7 +98,7 @@ class DeliveryGuard:
                 try:
                     delivery_finished(self.state_path.parent.parent, drawing_id, pending['reply_id'], status)
                 except (OSError, sqlite3.Error):
-                    from hakimi.tools.math_render import log_tool_call
+                    from hakimi.core.tool_log import log_tool_call
                     log_tool_call(self.state_path.parent.parent, 'image.draw', 'delivery_receipt_error')
         if pending.get('rendered_math'):
             from hakimi.core.runtime_io import atomic_replace
@@ -190,11 +190,11 @@ class DeliveryGuard:
                 or any(not isinstance(s, str) or not s.strip() or len(s) > self.policy["max_segment_chars"] for s in segments)):
             self._complete("invalid_payload")
             return None
-        from hakimi.bridge.interaction_policy import blocked_outgoing_topic
+        from hakimi.chat.interaction_policy import blocked_outgoing_topic
         if blocked_outgoing_topic(''.join(segments)):
             self._complete('ignored_topic')
             return None
-        from hakimi.bridge.bot_registry import cooling
+        from hakimi.chat.bot_registry import cooling
         interaction=pending.get('interaction') or {}
         if interaction.get('bot_target') and cooling(self.outbox_path.parent.parent,interaction['bot_target'],self.clock()):
             self._complete('bot_cooldown')

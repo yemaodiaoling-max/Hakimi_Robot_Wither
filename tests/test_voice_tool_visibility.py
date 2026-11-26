@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 from hakimi.prompt.tool_selection import select_names
 from hakimi.voice import tts
-from hakimi.transport.file_delivery import directory,stage
+from hakimi.chat.file_delivery import directory,stage
 
 
 class VoiceSelection(unittest.TestCase):
@@ -51,10 +51,10 @@ class VoiceSelection(unittest.TestCase):
 
     def test_verified_input_cooldown_optout_and_prepared_file(self):
         self.row['voice_ref']='11'
-        with patch('hakimi.voice.store.preview',return_value={}):
+        with patch('hakimi.memory.voice_receipts.preview',return_value={}):
             self.assertIn('voice.speak',self.tools())
             self.assertIsNone(tts.speech_mode(self.payload,self.base))
-        with patch('hakimi.voice.store.preview',return_value={'text':'你好'}):
+        with patch('hakimi.memory.voice_receipts.preview',return_value={'text':'你好'}):
             self.assertIn('voice.speak',self.tools())
 
             self.row['text']='只用文字'

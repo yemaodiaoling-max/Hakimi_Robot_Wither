@@ -109,7 +109,7 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(len(requests), 9)
 
     def test_existing_persona_keeps_short_style_and_conditional_detail(self):
-        from hakimi.prompt.prompt_language import PERSONA
+        from hakimi.persona.prompt_language import PERSONA
         self.assertIn('日常15至90字', PERSONA)
         self.assertIn('一般问答先简短给结论和关键依据', PERSONA)
         self.assertIn('明确要求详细解释、完整推导或多项证据对照时再按需展开', PERSONA)

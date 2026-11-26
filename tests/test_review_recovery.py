@@ -5,7 +5,8 @@ from pathlib import Path
 import tempfile
 import unittest
 from hakimi.memory.memory_store import MemoryStore
-from hakimi.memory import impression_events,daily_events,post_reply_review,review_audit,review_recovery
+from hakimi.memory import daily_events, review_audit, review_recovery
+from hakimi.curation import impression_events, post_reply_review
 from hakimi.social.social_schema import ensure_schema
 from hakimi.ops.recover_reviews import plan_recovery,prepare_recovery
 

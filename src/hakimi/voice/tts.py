@@ -2,8 +2,8 @@
 from contextlib import contextmanager
 import hashlib,json,os,re,sqlite3,subprocess,time
 from pathlib import Path
-from hakimi.voice.store import settings
-from hakimi.transport.file_delivery import directory
+from hakimi.memory.voice_receipts import settings
+from hakimi.chat.file_delivery import directory
 
 _TEXT_ONLY = re.compile(r'(?:不要|(?<![特区识辨级个分])别(?![人的家处])|不用|禁止|不准|不想|不需要|勿)[^，,。！？!?；;\n]{0,24}(?:语音|朗读|出声|声音|念出来|读出来)|(?:只|请用|还是用)(?:发|用|回)?(?:文字|文本)|(?:还是|只|就)(?:用)?打字|(?:打字|文字)(?:就好|就行)|text only', re.I)
 
@@ -51,7 +51,7 @@ def _explicit_text(text):
 
 
 def explicit(payload,base=None):
-    from hakimi.prompt.turn_text import current_text
+    from hakimi.chat.turn_text import current_text
     return _explicit_text(current_text(payload,directives_only=True,base=base,include_quotes=False))
 
 
@@ -71,8 +71,8 @@ def _voice_offer(payload,base,*,for_send=False):
     cfg=settings(base) if base else {}
     if not cfg.get('enabled') or not cfg.get('tts_enabled'):return None,False
     from hakimi.core.context_window import select_context
-    from hakimi.prompt.turn_text import current_text
-    from hakimi.voice.store import preview
+    from hakimi.chat.turn_text import current_text
+    from hakimi.memory.voice_receipts import preview
     rows,target=select_context(payload)
     session=payload.get('session_key')
     if not session or not target or target.get('session_key',session)!=session or target.get('user_id')=='SELF':return None,False
@@ -161,7 +161,7 @@ def speech_mode(payload, base):
 def hum_requested(payload,base=None):
     if isinstance(payload.get('internal_review'),dict) or payload.get('internal_review') or payload.get('cold_topic_request') or payload.get('is_proactive'):
         return False
-    from hakimi.prompt.turn_text import current_text
+    from hakimi.chat.turn_text import current_text
     text=current_text(payload,directives_only=True,base=base,include_quotes=False)
     if _TEXT_ONLY.search(text):return False
     if re.search(r'(?:不要|别|不准|不用|禁止|不想).{0,4}(?:唱|哼)|完整|指定|朗读|歌词|《|》',text):return False
@@ -281,7 +281,7 @@ def prepare(base,payload,text,timeout=None):
             for p in root.glob(temp.stem+'*'):p.unlink(missing_ok=True)
 
 def _log_speech_result(base,claim,provider,hum,result):
-    from hakimi.tools.math_render import log_tool_call
+    from hakimi.core.tool_log import log_tool_call
     name='voice.hum' if hum else 'voice.speak'
     trigger=str(claim.get('payload',{}).get('trigger_id',''))
     if result.get('error')=='already_replied' and claim.get('_reply_submitted'):return

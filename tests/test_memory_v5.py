@@ -20,7 +20,7 @@ from hakimi.ops import cloud_service
 from hakimi.console import memory_console
 from hakimi.memory import memory_lifecycle
 from hakimi.social import memory_social
-from hakimi.memory import personal_review
+from hakimi.curation import personal_review
 from hakimi.tools import qq_cli
 from hakimi.ops import terra_budget
 from hakimi.ops import terra_supervision

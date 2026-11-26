@@ -20,7 +20,7 @@ from hakimi.models.vertex_session import VertexSession, declarations
 from hakimi.prompt.tool_selection import select_names
 from hakimi.tools.drawing_delivery import draw, drawing_in, onebot_image, receipts
 from hakimi.tools.drawing_intent import COOLDOWN_NOTE, TOOL, request_id, requested
-from hakimi.transport.file_delivery import from_segment, menu, stage
+from hakimi.chat.file_delivery import from_segment, menu, stage
 
 
 CONFIG = {'enabled': True, 'has_api_key': True}

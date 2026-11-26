@@ -1,7 +1,7 @@
 import html,json,re,tempfile,unittest
 from pathlib import Path
 from unittest.mock import Mock,patch
-from hakimi.bridge.reply_format import limit_group_reply,text_bubbles
+from hakimi.chat.reply_format import limit_group_reply,text_bubbles
 from hakimi.bridge.turn_coordinator import TurnCoordinator
 from hakimi.models.provider_health import ProviderHealth
 from hakimi.prompt.prompt_context import resolve_profile

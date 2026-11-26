@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from PIL import Image
 
-from hakimi.transport.official_base import API_ROOT, MAX_IMAGE_BYTES, NoRedirect, OfficialError
+from hakimi.chat.official_base import API_ROOT, MAX_IMAGE_BYTES, NoRedirect, OfficialError
 
 
 def business_code(result):

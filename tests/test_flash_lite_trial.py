@@ -5,7 +5,7 @@ from hakimi.bridge.turn_coordinator import TurnCoordinator
 from hakimi.prompt.prompt_context import render_prompt,render_vertex_prompt,activate_context
 from hakimi.models.fallback_supervisor import fallback_prompt
 from hakimi.models.fallback_runner import build_patch
-from hakimi.prompt.prompt_language import DEFENSIVE,context as positive_context
+from hakimi.persona.prompt_language import DEFENSIVE,context as positive_context
 from hakimi.models import model_trial
 from hakimi.ops import terra_supervision
 from tests.test_official_adapter import fixture_root

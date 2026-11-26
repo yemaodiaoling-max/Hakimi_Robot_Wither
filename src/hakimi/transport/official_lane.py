@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 import time
 
-from hakimi.transport.official_api import OfficialAPI; from hakimi.transport.official_transport import OfficialAdapter; from hakimi.transport.official_base import OfficialError, fixed_json; from hakimi.transport.official_routes import RouteStore
+from hakimi.transport.official_api import OfficialAPI; from hakimi.transport.official_transport import OfficialAdapter; from hakimi.chat.official_base import OfficialError, fixed_json; from hakimi.transport.official_routes import RouteStore
 
 
 async def main():

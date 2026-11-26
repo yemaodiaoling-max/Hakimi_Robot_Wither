@@ -9,7 +9,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from hakimi.transport.official_base import OfficialError, alias
+from hakimi.chat.official_base import OfficialError, alias
 
 
 class RouteStore:

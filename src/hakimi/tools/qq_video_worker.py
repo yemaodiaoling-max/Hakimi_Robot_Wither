@@ -9,7 +9,7 @@ import time
 from urllib.request import build_opener, ProxyHandler, Request
 
 from hakimi.tools.qq_video import approved, LIMIT
-from hakimi.transport.official_base import NoRedirect
+from hakimi.chat.official_base import NoRedirect
 
 SAFE_MEDIA = ['-protocol_whitelist','file,pipe','-format_whitelist','mov,matroska,webm,avi,mpeg,mpegts,flv']
 

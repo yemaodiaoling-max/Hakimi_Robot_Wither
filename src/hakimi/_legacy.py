@@ -17,18 +17,25 @@ LAYOUT = {
         'time_tool',
         'host_secrets',
     ),
+    'chat': (
+        'official_groups',
+        'member_mentions',
+        'file_delivery',
+        'image_permissions',
+        'reply_format',
+        'quote_policy',
+        'interaction_policy',
+        'group_reply_quota',
+        'bot_registry',
+    ),
     'transport': (
         'official_transport',
         'official_files',
-        'official_groups',
         'official_lane',
         'official_test',
         'official_waiter',
         'forward_messages',
-        'member_mentions',
         'group_capabilities',
-        'file_delivery',
-        'image_permissions',
     ),
     'bridge': (
         'bridge_daemon',
@@ -36,21 +43,18 @@ LAYOUT = {
         'conversation_judge',
         'turn_coordinator',
         'delivery_guard',
-        'reply_format',
-        'quote_policy',
         'participation_policy',
-        'interaction_policy',
-        'group_reply_quota',
         'study_recovery',
         'cold_topics',
         'wait_next_event',
-        'bot_registry',
         'image_initiative',
+    ),
+    'persona': (
+        'prompt_language',
     ),
     'prompt': (
         'prompt_context',
         'prompt_compaction',
-        'prompt_language',
         'prompt_budget',
         'tool_catalog',
         'tool_selection',
@@ -94,9 +98,11 @@ LAYOUT = {
         'memory_embedding_eval',
         'smart_memory',
         'legacy_md_notes',
+        'repair_manual_scores',
+    ),
+    'curation': (
         'impression_events',
         'personal_review',
-        'repair_manual_scores',
     ),
     'social': (
         'memory_social',
@@ -146,6 +152,35 @@ MODULE_ALIASES = {
     )
 }
 MODULE_ALIASES['hakimi.models.vertex_web'] = 'hakimi.web.public_pages'
+# Layering pass: shared QQ message primitives moved to ``hakimi.chat``; see hakimi.architecture.
+MODULE_ALIASES.update({f"hakimi.{old}": f"hakimi.{new}" for old, new in {
+    "bridge.reply_format": "chat.reply_format",
+    "bridge.mention_segments": "chat.mention_segments",
+    "bridge.quote_policy": "chat.quote_policy",
+    "bridge.turn_lanes": "chat.turn_lanes",
+    "bridge.message_lifecycle": "chat.message_lifecycle",
+    "bridge.user_reply_quota": "chat.user_reply_quota",
+    "bridge.group_reply_quota": "chat.group_reply_quota",
+    "bridge.bot_registry": "chat.bot_registry",
+    "bridge.interaction_policy": "chat.interaction_policy",
+    "transport.member_mentions": "chat.member_mentions",
+    "transport.image_permissions": "chat.image_permissions",
+    "transport.sent_media_context": "chat.sent_media_context",
+    "transport.legacy_sent_media": "chat.legacy_sent_media",
+    "transport.official_base": "chat.official_base",
+    "transport.official_groups": "chat.official_groups",
+    "transport.file_delivery": "chat.file_delivery",
+    "core.self_reply_context": "chat.self_reply_context",
+    "prompt.turn_text": "chat.turn_text",
+    "voice.store": "memory.voice_receipts",
+    "prompt.prompt_language": "persona.prompt_language",
+    # Model-driven memory review lives above the models it calls; memory keeps storage and retrieval.
+    "memory.post_reply_review": "curation.post_reply_review",
+    "memory.impression_events": "curation.impression_events",
+    "memory.review_runtime": "curation.review_runtime",
+    "memory.personal_review": "curation.personal_review",
+    "persona.catalog": "setup.persona_catalog",
+}.items()})
 
 
 class _AliasLoader(importlib.abc.Loader):

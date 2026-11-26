@@ -7,7 +7,7 @@ from pathlib import Path
 from hakimi.core.context_window import CHAT_ZONE, chronological_rows
 from hakimi.core.jsonio import tail_jsonl
 from hakimi.core.runtime_io import read_derived_cached
-from hakimi.transport.sent_media_context import enrich_sent_rows
+from hakimi.chat.sent_media_context import enrich_sent_rows
 from datetime import datetime
 
 MAX_OWN_REPLIES = 5

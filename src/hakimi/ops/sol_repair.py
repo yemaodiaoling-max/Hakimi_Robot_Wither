@@ -75,7 +75,7 @@ def stage_patch(root,job,changed):
     return stage
 
 def busy(root):
-    from hakimi.bridge.turn_lanes import LANES
+    from hakimi.chat.turn_lanes import LANES
     state_dir=root/'official_test_runtime/state'
     turns=[read(state_dir/('turn_lanes/'+lane+'.json' if lane else 'turn_state.json')) for lane in LANES]
     delivery=read(root/'official_test_runtime/state/delivery_state.json')

@@ -4,7 +4,7 @@
   读取顺序：``<实例>/persona/<name>``（设置面板「人设」里保存的自定义版本）→ 包内默认。
 * ``style_guide.md`` / ``style_examples.jsonl`` / ``dsh_style_examples.jsonl`` 由
   ``hakimi.paths.persona(name, base)`` 读取，顺序相同。
-* 可在面板里编辑的条目见 ``hakimi.persona.catalog``；每个文件的用途见本目录 README.md。
+* 可在面板里编辑的条目见 ``hakimi.setup.persona_catalog``；每个文件的用途见本目录 README.md。
 
 修改后重启相关服务生效（读取结果在进程内缓存）。
 """

@@ -7,7 +7,8 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
-from hakimi.memory import daily_events, impression_events, post_reply_review as review
+from hakimi.memory import daily_events
+from hakimi.curation import impression_events, post_reply_review as review
 from hakimi.memory.memory_store import MemoryStore
 from hakimi.social.social_schema import ensure_schema
 from hakimi.bridge.conversation_scheduler import ConversationScheduler

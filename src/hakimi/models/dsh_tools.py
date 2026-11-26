@@ -62,12 +62,12 @@ def execute(request,claim,coordinator,base):
                 claim['_images'] = frames
         return {key:value for key,value in report.items() if key != '_frame_path'}
     if name=='bots.propose':
-        from hakimi.bridge.bot_registry import propose
+        from hakimi.chat.bot_registry import propose
         out=propose(base,claim['payload'],**data)
         log_tool_call(base,name,'ok' if out.get('ok') else 'candidates',provider='dsh')
         return out
     if name=='members.mention':
-        from hakimi.transport.member_mentions import mention, mention_status
+        from hakimi.chat.member_mentions import mention, mention_status
         out=mention(base,coordinator,claim['token'],'dsh',**data)
         if out.get('sent'):claim['_reply_submitted']=True
         log_tool_call(base,name,mention_status(out),provider='dsh',trigger_id=claim.get('trigger_id') or claim['payload'].get('trigger_id',''))
@@ -114,7 +114,7 @@ def execute(request,claim,coordinator,base):
         output=(DSH_ONLY[wanted] if wanted in DSH_ONLY else describe(wanted, include_drawing=include_drawing)) if wanted else {'tools':[r for r in describe(include_drawing=include_drawing)['tools'] if r['name'] in READ|TERMINAL]+list(DSH_ONLY.values())}
         return {'ok':True,'result':output}
     if name=='images.list':
-        from hakimi.transport.image_permissions import allowed_images_for_session
+        from hakimi.chat.image_permissions import allowed_images_for_session
         return {'ok':True,'result':{'paths':allowed_images_for_session(claim['payload']['session_key'],Path(base))[-8:],
                 'attached_images':[{k:image[k] for k in ('id','message_id','width','height') if k in image} for image in claim.get('_images',())]}}
     if name=='image.read':
@@ -144,7 +144,7 @@ def execute(request,claim,coordinator,base):
     activate_context(claim['payload'],Path(base),claim=claim)
     args=[sys.executable,str(Path(base)/'qq_cli.py'),'call',name,'--session',claim['payload']['session_key'],'--turn',claim['token']]
     for key,value in data.items():args+=['--'+key.replace('_','-')+'='+str(value)]
-    from hakimi.bridge.turn_lanes import lane_id
+    from hakimi.chat.turn_lanes import lane_id
     child_env = dict(os.environ, HAKIMI_TURN_LANE=lane_id())
     result=subprocess.run(args,env=child_env,capture_output=True,text=True,timeout=max(1,min(30,claim['deadline']-time.time()-2)))
     if result.returncode:raise ValueError((result.stderr or result.stdout).strip()[-180:] or '工具执行失败')

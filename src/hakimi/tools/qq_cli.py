@@ -8,7 +8,7 @@ QQ 请求任意命令、代码执行或非白名单文件操作仍须 request_ap
 """
 from hakimi.core import bot_identity
 from hakimi import paths
-from hakimi.bridge.turn_lanes import active_context_path
+from hakimi.chat.turn_lanes import active_context_path
 
 import argparse
 import json
@@ -21,10 +21,10 @@ import uuid
 from pathlib import Path
 
 from hakimi.tools.bot_tools import ToolError, parse_input, require_context, run_tool
-from hakimi.bridge.reply_format import text_bubbles
+from hakimi.chat.reply_format import text_bubbles
 from hakimi.tools.sticker_policy import evaluate_sticker
 from hakimi.tools.sticker_catalog import require_allowed, available_stickers, StickerPolicyError
-from hakimi.bridge.quote_policy import allow_quote
+from hakimi.chat.quote_policy import allow_quote
 from hakimi.bridge.turn_coordinator import TurnCoordinator, CoordinatorError
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -224,11 +224,11 @@ def cmd_reply(args):
     _deny_review_output(context, "发送QQ消息")
     if not context.get("owner_token"):
         raise ToolError("旧版会话无任务令牌，请使用新版等待器领取任务")
-    from hakimi.bridge.reply_format import MAX_REPLY_SEGMENTS
+    from hakimi.chat.reply_format import MAX_REPLY_SEGMENTS
     from hakimi.tools.math_render import prepare_text,submit_text,wait_sent
     frame = None
     if getattr(args, 'video_frame', None) == 'F1':
-        from hakimi.transport.image_permissions import video_frame_for_turn
+        from hakimi.chat.image_permissions import video_frame_for_turn
         path = video_frame_for_turn(args.session, context['owner_token'], BASE_DIR)
         if path:
             frame = f'[CQ:image,file={path.as_uri()},sub_type=0]'
@@ -275,7 +275,7 @@ def cmd_reply(args):
         print("本轮无可发送内容，已静默完成。")
         return
 
-    from hakimi.bridge.reply_format import MAX_SEGMENT_CHARS
+    from hakimi.chat.reply_format import MAX_SEGMENT_CHARS
     if any(len(segment) > MAX_SEGMENT_CHARS for segment in segments):
         raise ToolError("转义后消息超过发送上限，请精简正文")
     result = TurnCoordinator(BASE_DIR).submit_reply(context["owner_token"], segments, "gemini", files=files, reply_to=args.reply_to,
@@ -292,7 +292,7 @@ def cmd_skip(args):
     review = _review_context(context)
     if review:
         try:
-            from hakimi.memory.personal_review import mark_completed
+            from hakimi.curation.personal_review import mark_completed
             mark_completed(BASE_DIR, review.get("review_id", ""))
         except (OSError, ValueError):
             pass
@@ -375,7 +375,7 @@ def cmd_mem_append(args):
 
     context = current_context(args.session, getattr(args, "turn", None))
     _deny_review_output(context, "写memory.remember；内部反思只允许memory.social")
-    from hakimi.voice.store import has_voice,scoped_saved_receipt
+    from hakimi.memory.voice_receipts import has_voice,scoped_saved_receipt
     if has_voice(BASE_DIR,TurnCoordinator(BASE_DIR).snapshot().get('payload',{})):
         print(json.dumps(scoped_saved_receipt(),ensure_ascii=False));return
     note = args.note
@@ -474,7 +474,7 @@ def _cmd_call(args):
     props = BY_NAME[name]["inputSchema"]["properties"]
     data = {key: getattr(args, key) for key in props if getattr(args, key, None) is not None}
     if name in {'memory.social','memory.social_append'}:
-        from hakimi.voice.store import has_voice,scoped_saved_receipt
+        from hakimi.memory.voice_receipts import has_voice,scoped_saved_receipt
         if has_voice(BASE_DIR,TurnCoordinator(BASE_DIR).snapshot().get('payload',{})):
             print(json.dumps(scoped_saved_receipt(),ensure_ascii=False));return
     if name in {'voice.speak','voice.hum'}:
@@ -498,7 +498,7 @@ def _cmd_call(args):
         print(json.dumps(report,ensure_ascii=False))
         return
     if name == 'members.mention':
-        from hakimi.transport.member_mentions import mention
+        from hakimi.chat.member_mentions import mention
         print(json.dumps(mention(BASE_DIR,TurnCoordinator(BASE_DIR),args.turn,'gemini',**data),ensure_ascii=False))
         return
     if name == 'diary.read':
@@ -539,16 +539,16 @@ def _cmd_call(args):
     elif name == "images.list":
         output = {"images": context.get("allowed_image_paths", [])}
     elif name == "files.list":
-        from hakimi.transport.file_delivery import directory, menu
+        from hakimi.chat.file_delivery import directory, menu
         output = {"files": menu(args.session, BASE_DIR, limit=64), "output_directory": str(directory(args.session, BASE_DIR))}
     elif name == "stickers.list":
         from hakimi.models.fallback_style import sticker_menu
         output = {"stickers": sticker_menu(TurnCoordinator(BASE_DIR).snapshot().get("payload", {}), BASE_DIR)}
     elif name == "voice.read":
-        from hakimi.voice.store import read as read_voice
+        from hakimi.memory.voice_receipts import read as read_voice
         output=read_voice(BASE_DIR,args.session,data["message_id"],data.get("offset",0),data.get("limit",3000))
         if output.get("text"):
-            from hakimi.voice.store import mark_turn
+            from hakimi.memory.voice_receipts import mark_turn
             mark_turn(BASE_DIR,args.session,TurnCoordinator(BASE_DIR).snapshot().get("trigger_id",""))
     elif name == "memory.read":
         from hakimi.memory.memory_store import store
@@ -560,7 +560,7 @@ def _cmd_call(args):
         if record is None:
             raise ToolError("该记忆不存在或不属于当前可读范围")
         if record.get('channel')=='voice':
-            from hakimi.voice.store import mark_turn
+            from hakimi.memory.voice_receipts import mark_turn
             mark_turn(BASE_DIR,args.session,TurnCoordinator(BASE_DIR).snapshot().get('trigger_id',''))
         output = memory_read_result(record)
     elif name == "memory.search":
@@ -576,7 +576,7 @@ def _cmd_call(args):
             args.session,rows,target,query=str(data.get('query') or target.get('text',''))[:300],
             cross_groups=cross,budget=retrieval_limit * 200,limit=retrieval_limit,explain=True)}
         if any('[语音:' in line for line in output['memories']):
-            from hakimi.voice.store import mark_turn
+            from hakimi.memory.voice_receipts import mark_turn
             mark_turn(BASE_DIR,args.session,payload.get('trigger_id',''))
     elif name == "memory.graph":
         from hakimi.memory.memory_store import store
@@ -645,7 +645,7 @@ def _cmd_call(args):
             raise ToolError(exc.message) from exc
         if review:
             try:
-                from hakimi.memory.personal_review import mark_written
+                from hakimi.curation.personal_review import mark_written
                 mark_written(BASE_DIR, review.get("review_id", ""), target_id, output)
             except (OSError, ValueError):
                 pass

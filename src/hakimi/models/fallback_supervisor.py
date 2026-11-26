@@ -7,7 +7,7 @@ import time
 
 from hakimi.prompt.prompt_context import build_context
 from hakimi.bridge.turn_coordinator import TurnCoordinator
-from hakimi.bridge.user_reply_quota import is_private_session
+from hakimi.chat.user_reply_quota import is_private_session
 from hakimi.models.fallback_runner import FallbackError
 from hakimi.models.fallback_media import prepare_images
 from hakimi.features.codex_help import HelpQueue, question_brief, report_fault, worker_healthy, settings as help_settings
@@ -162,7 +162,7 @@ async def fallback_loop(load_config, base=BASE_DIR, runner=None):
                         coordinator = candidate
                         break
                 if claim:
-                    from hakimi.bridge.turn_lanes import lane_context
+                    from hakimi.chat.turn_lanes import lane_context
                     with lane_context(coordinator.lane_id):
                         coordinator.enable_post_reply(claim["token"])
                         record_call(status, claim, now)
@@ -196,7 +196,7 @@ async def fallback_loop(load_config, base=BASE_DIR, runner=None):
                                 status.update(state='superseded', consecutive_errors=0, last_finished_at=time.time())
                                 _save_status(base, status)
                                 continue
-                            from hakimi.bridge.message_lifecycle import record
+                            from hakimi.chat.message_lifecycle import record
                             code=str(exc) if isinstance(exc,FallbackError) else type(exc).__name__
                             record(base,claim['payload'],'generation_error',trigger_id=claim['trigger_id'],reason=code)
                             report_fault(base, "dsh_fallback", exc)

@@ -1,7 +1,7 @@
 import json,tempfile,time,unittest
 from pathlib import Path
-from hakimi.bridge.message_lifecycle import record
-from hakimi.bridge.reply_format import text_bubbles
+from hakimi.chat.message_lifecycle import record
+from hakimi.chat.reply_format import text_bubbles
 from hakimi.bridge.turn_coordinator import TurnCoordinator
 from hakimi.console.message_log import recent_messages
 

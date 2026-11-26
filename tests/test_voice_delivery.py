@@ -4,9 +4,10 @@ from datetime import datetime,timezone
 from pathlib import Path
 from unittest.mock import AsyncMock,patch
 from hakimi.transport import official_transport as transport
-from hakimi.transport.file_delivery import directory,stage
-from hakimi.voice import store,tts
-from hakimi.bridge.interaction_policy import delivered
+from hakimi.chat.file_delivery import directory,stage
+from hakimi.voice import tts
+from hakimi.memory import voice_receipts as store
+from hakimi.chat.interaction_policy import delivered
 
 class VoiceDeliveryTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

@@ -287,7 +287,7 @@ def receive_frame(report, output, base, session, request_id, owner=None):
             or type(end) not in (int, float) or not start - .001 <= at <= end + .001
             or shot.get('evidence_id') not in feedback.get('evidence_ids', [])):
         return
-    from hakimi.transport.image_permissions import VIDEO_FRAME_TTL, register_video_frame
+    from hakimi.chat.image_permissions import VIDEO_FRAME_TTL, register_video_frame
     from PIL import Image
     root = Path(base).resolve() / 'state' / 'img_cache'
     try:
@@ -325,7 +325,7 @@ class VideoError(RuntimeError):
 
 def prepare(payload, base=ROOT, *, timeout_seconds=180, is_active=None, source=None, owner=None):
     """Program delegation to the companion's actual A/V viewing, never another QQ model."""
-    from hakimi.web.search_policy import network_allowed
+    from hakimi.chat.turn_text import network_allowed
     if not network_allowed(payload,base):return None
     deadline = time.monotonic()+min(180,float(timeout_seconds))
     url, source = (find_url(source.get('text', '')), source) if source is not None else candidate(payload)
@@ -470,7 +470,7 @@ def selected_frames(ids, report, session, base):
     shot = feedback.get('screenshot') if isinstance(feedback, dict) else None
     if 'F1' not in (ids or ()) or not isinstance(path, str) or not shot:
         return []
-    from hakimi.transport.image_permissions import allowed_images_for_session
+    from hakimi.chat.image_permissions import allowed_images_for_session
     if path in allowed_images_for_session(session, Path(base).resolve()):
         return [dict(shot, path=path)]
     return []

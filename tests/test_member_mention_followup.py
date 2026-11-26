@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock,patch
-from hakimi.transport import member_mentions as mentions
+from hakimi.chat import member_mentions as mentions
 from hakimi.transport.official_routes import RouteStore
 
 

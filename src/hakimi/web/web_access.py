@@ -9,7 +9,7 @@ import time
 from urllib.parse import quote, urlencode
 import xml.etree.ElementTree as ET
 
-from hakimi.prompt.turn_text import current_text
+from hakimi.chat.turn_text import current_text
 from hakimi.web.search_policy import network_allowed,config,explicit_search
 from hakimi.web.search_budget import SearchBudget,BudgetUnavailable
 from hakimi.web import web_sources,web_quality

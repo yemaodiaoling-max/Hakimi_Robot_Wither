@@ -17,7 +17,7 @@ from hakimi.models.argon_session import messages as argon_messages
 from hakimi.models.fallback_media import prepare_images
 from hakimi.models.fallback_runner import prepare_runtime
 from hakimi.models.vertex_session import VertexSession
-from hakimi.transport.image_permissions import register_cached_image
+from hakimi.chat.image_permissions import register_cached_image
 
 
 class SentStickerPixelsTests(unittest.TestCase):

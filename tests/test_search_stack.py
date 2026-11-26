@@ -12,8 +12,8 @@ from unittest.mock import Mock,patch
 from hakimi.models import web_access,web_sources,web_quality,search_routing
 from hakimi.models.search_budget import SearchBudget,BudgetUnavailable,deepseek_cost,cost_bounds
 from hakimi.bridge.turn_coordinator import TurnCoordinator
-from hakimi.bridge.reply_format import text_bubbles
-from hakimi.bridge.interaction_policy import delivered
+from hakimi.chat.reply_format import text_bubbles
+from hakimi.chat.interaction_policy import delivered
 from hakimi.paths import source_file
 
 

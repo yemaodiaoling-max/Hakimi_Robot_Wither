@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from hakimi.memory import review_runtime as runtime
+from hakimi.curation import review_runtime as runtime
 
 
 class Response:
@@ -115,7 +115,8 @@ class ReviewAPITests(unittest.TestCase):
 
 class ReviewProvenanceTests(unittest.TestCase):
     def setUp(self):
-        from hakimi.memory import daily_events, impression_events, post_reply_review
+        from hakimi.memory import daily_events
+        from hakimi.curation import impression_events, post_reply_review
         from hakimi.memory.memory_store import MemoryStore
         from hakimi.social.social_schema import ensure_schema
         tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)

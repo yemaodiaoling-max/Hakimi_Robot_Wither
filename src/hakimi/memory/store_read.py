@@ -41,7 +41,7 @@ class StoreReadMixin:
                 return None
             record = dict(row)
             if row['channel']=='voice':
-                from hakimi.voice.store import read as read_voice
+                from hakimi.memory.voice_receipts import read as read_voice
                 voice=read_voice(self.base,session,row['origin'],offset,limit)
                 if voice.get('error'):return None
                 return {'id':'M'+mid,'kind':'chat','channel':'voice','session_key':session,'user_id':row['user_id'],'message_id':row['origin'],'text':voice['text'],'text_kind':'automatic_transcription','verification':'asr_unverified','status':'active','time':row['at'],'expires_at':row['expires'],'raw_available':True,'source':'QQ语音自动识别，可能有误','source_view':source,'offset':voice['offset'],'total_chars':voice['total_chars'],'next_offset':voice['offset']+len(voice['text']) if voice['more'] else None}

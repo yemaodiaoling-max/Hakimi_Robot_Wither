@@ -2,7 +2,8 @@ import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
-from hakimi.memory import daily_events, impression_events, post_reply_review
+from hakimi.memory import daily_events
+from hakimi.curation import impression_events, post_reply_review
 from hakimi.memory.memory_store import MemoryStore
 from hakimi.social.social_schema import ensure_schema
 

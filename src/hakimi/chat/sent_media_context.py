@@ -40,7 +40,7 @@ def media_descriptor(segment, base, sticker_digest=None):
 
 
 def enrich_sent_rows(receipts, base):
-    from hakimi.transport.legacy_sent_media import legacy_media_segments
+    from hakimi.chat.legacy_sent_media import legacy_media_segments
     missing = any(not r.get('text') and not r.get('media') for r in receipts)
     legacy = legacy_media_segments(receipts, base) if missing else {}
     enriched = []

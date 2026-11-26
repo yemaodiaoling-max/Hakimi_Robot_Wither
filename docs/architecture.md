@@ -12,9 +12,30 @@
 | 搜索网页、管理搜索额度、记录回答引用的来源 | `hakimi.web`。普通网页读取在 `public_pages.py`，来源记录在 `web_sources.py` | 向调用方返回网页内容、来源或失败原因 |
 | 修改本地网关额度或账单 | `hakimi.gateway.ledger`。配置和证书在 `config.py`，HTTP 处理在 `server.py` | 客户端与网关共用 `protocol.py` 的项目标记和预算字段 |
 | 在设置页面增加功能 | `hakimi.console.setup_api` 接收 HTTP 参数，`hakimi.setup.settings` 校验和写入实例配置 | 命令行设置也使用同一套配置逻辑 |
-| 调整记忆、关系、语音或日记 | 分别看 `hakimi.memory`、`hakimi.social`、`hakimi.voice`、`hakimi.features.diary_daily` | B 站观看程序在独立的 `bili_companion` 包，Windows 桌宠在 `desktop_pet/` |
+| 气泡切分、@提及、引用、发送记录、文件与图片许可、回复额度 | `hakimi.chat`。这些是所有层共用的小函数和状态文件 | 由调用方决定何时发送 |
+| 调整记忆、关系、语音或日记 | 存储与检索看 `hakimi.memory`、`hakimi.social`；回复后的印象/关系复盘和人物复盘看 `hakimi.curation`；语音看 `hakimi.voice`；日记看 `hakimi.features.diary_daily` | B 站观看程序在独立的 `bili_companion` 包，Windows 桌宠在 `desktop_pet/` |
 
 例如，遇到同一人连续补充两句话，先看 `bridge/turn_coordinator.py` 的轮次状态和 `bridge/followup.cpp` 的文本判定。如果回复发出了却没有收到 OneBot 确认，再看 `transport/onebot_websocket.py`。
+
+## 分层
+
+包按层排列，下层不依赖上层。`hakimi arch` 打印当前分层和规模，`hakimi arch --check` 检查导入方向，`tests/test_architecture.py` 在测试中执行同样的检查。
+
+| 层 | 包 | 负责 |
+|---|---|---|
+| L6 入口与运维 | `ops` `console` `setup`，以及 `hakimi.config`、`hakimi.modules`、`tools/qq_cli.py` | systemd 服务入口、巡查修复、信息面板与设置面板、命令行 |
+| L5 编排 | `bridge` `transport` `curation` `features` | 轮次调度与协调、QQ 协议通道、记忆整理、日记/QQ 空间/专家求助 |
+| L4 模型与检索 | `models` `web` | 模型路由与预算、各模型会话和备用通道；联网搜索与来源记录 |
+| L3 提示词 | `prompt` | 把记忆、关系和能力说明组装成一轮提示词 |
+| L2 能力 | `tools` `voice` | 画图、数学排版、表情包、B 站解析、语音合成等单项能力 |
+| L1 原语与数据 | `chat` `memory` `social` `gateway` | 聊天消息原语、长期记忆、关系网、网关账本 |
+| L0 基础 | `core` `persona` `defaults`，以及 `hakimi.paths` | 路径、JSON 读写、时间、密钥、人设文本 |
+
+同一层内的包可以互相使用。`models` 与 `web` 放在同一层，因为会话调用检索工具，检索又用模型做判定和 Google 落地。
+
+少数从下层指向上层的导入在 `hakimi/architecture.py` 的 `EXCEPTIONS` 中逐条写明原因，例如模型会话通过 `bridge.turn_coordinator` 提交回复。新增向上导入会让测试失败；某条例外不再需要时，测试也会提示删除，因此这份清单只会变短。
+
+新代码放在它所依赖的最高层：只读写消息格式和状态文件的放 `chat`，需要调用模型的记忆逻辑放 `curation`，需要调度轮次的放 `bridge`。
 
 ## 代码与数据分离
 
@@ -47,17 +68,17 @@
 
 ## 旧模块名
 
-新代码从实际所属包导入。历史脚本仍可使用 `import memory_store`；网页模块原有导入路径（如 `hakimi.models.vertex_web`）也可继续使用。`hakimi._legacy` 将这些路径按需解析到同一个模块对象，因此缓存、测试替换和配置状态可以共享。
+新代码从实际所属包导入。历史脚本仍可使用 `import memory_store`；搬迁过的模块原有导入路径（如 `hakimi.models.vertex_web`、`hakimi.bridge.reply_format`、`hakimi.memory.personal_review`）也可继续使用，完整对照表见 `hakimi._legacy.MODULE_ALIASES`。`hakimi._legacy` 将这些路径按需解析到同一个模块对象，因此缓存、测试替换和配置状态可以共享。旧路径只用于导入，`python -m` 需要使用当前路径。
 
 `paths.source_file('vertex_web.py')` 可按旧文件名找到当前实现。旧的网页工作进程也保留可执行入口 `python -m hakimi.models.web_fetch_worker`。
 
-## 分层与依赖
+## 大文件的拆分
 
 主要模块按下表分工。兼容入口保留已有导入路径。
 
 | 原文件 | 拆成 |
 |---|---|
-| `official_transport.py` | `official_base`（错误、常量）、`official_routes`（路由库）、`official_api`（HTTP）、适配器本体 |
+| `official_transport.py` | `chat.official_base`（错误、常量）、`official_routes`（路由库）、`official_api`（HTTP）、适配器本体 |
 | `identity_links.py` | `identity_base / store / old_catalog / new_catalog / edit / legacy` |
 | `memory_store.py` | `store_base`（表结构、工具函数），以及混入类 `store_write / store_embeddings / store_maintenance / store_retrieval / store_read` |
 | `memory_social.py` | `social_base / social_schema / social_fields / social_record / social_repair / social_query / interaction_familiarity / social_seed` |
@@ -91,7 +112,7 @@ OneBot 的消息格式、图片缓存和 WebSocket 收发分别在 `transport/on
 
 ## 按用户限制回复成本
 
-`bridge/user_reply_quota.py` 提供纯本地的滚动窗口计数：同一 `user_id` 在任意30分钟内最多7轮，群聊和私聊共用，Gemini和DSH共用。不同通道若给出不同身份ID，仅能按实际可识别的ID计数。
+`chat/user_reply_quota.py` 提供纯本地的滚动窗口计数：同一 `user_id` 在任意30分钟内最多7轮，群聊和私聊共用，Gemini和DSH共用。不同通道若给出不同身份ID，仅能按实际可识别的ID计数。
 
 `TurnCoordinator.publish` 在创建模型任务前检查；领取任务和提交回复再次检查，工具指定 `reply_to` 时以实际可见消息作者为准。一个提交的回复轮次无论拆成多少气泡、图片或文件都只计一次；静默、内省和未提交的失败不占次数。没有指向用户的冷场话题不占某个用户的额度。
 

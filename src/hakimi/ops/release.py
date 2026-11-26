@@ -29,7 +29,7 @@ def read(path):
 
 def lane_busy(runtime, now=None):
     now = time.time() if now is None else now
-    from hakimi.bridge.turn_lanes import LANES
+    from hakimi.chat.turn_lanes import LANES
     turns = [read(runtime/"state"/("turn_lanes/"+lane+".json" if lane else "turn_state.json")) for lane in LANES]
     delivery = read(runtime / "state/delivery_state.json")
     active = any(turn.get("status") in {"queued", "primary_active", "fallback_active"} and turn.get("expires_at", now + 1) > now for turn in turns)

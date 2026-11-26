@@ -50,7 +50,7 @@ def submit_fallback_result(result, claim, coordinator, base, *, finish=False):
             accepted = coordinator.complete(claim["token"], outcome="no_reply")
         else:
             submission = coordinator.submit_reply(claim["token"], segments, "dsh", files=result.get("files"), reply_to=result.get('reply_to'),interaction=result.get('interaction'))
-            from hakimi.bridge.mention_segments import UNRESOLVED, CLARIFY
+            from hakimi.chat.mention_segments import UNRESOLVED, CLARIFY
             if submission.get('reason') == UNRESOLVED:
                 cleared = coordinator.select_mention(claim['token'], 'dsh', None)
                 if cleared['accepted']:

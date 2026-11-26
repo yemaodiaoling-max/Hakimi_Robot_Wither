@@ -24,6 +24,7 @@ COMMANDS = {
     "setup": ("hakimi.setup", "first-run setup: init | url | status | apply"),
     "gateway": ("hakimi.gateway", "local model gateway: init | serve | status"),
     "modules": ("hakimi.modules", "installed/enabled modules: qq, video, pet"),
+    "arch": ("hakimi.architecture", "package layers and the import check (--check, --json)"),
 }
 
 

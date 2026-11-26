@@ -1,5 +1,21 @@
 """Collect the current speaker's text and permitted voice transcripts for this turn."""
+import re
+
 from hakimi.core.context_window import select_context
+
+_NO_NETWORK = (r'(?:不要|别|不许|禁止|无需|不用|不必|不准|不需要|不得|不能|勿).{0,5}(?:联网|上网|搜|查|检索|访问网页)',
+               r'(?:不联网|不上网)(?:回答|也|直接|，|,|。|$)',
+               r'(?:只|仅)(?:用|根据|凭).{0,8}(?:已有知识|现有知识|本地资料|下面材料|我贴的|我给的|我提供的)',
+               r'(?:仅|只|就)?(?:用|凭|根据)(?:你的|已有的|已有|现有)?记忆(?:回答|作答|就行|即可)?|离线(?:回答|作答|处理|模式)',
+               r"\b(?:do not|don't|without|no)\s+(?:use\s+)?(?:web|internet|browsing|search)|\boffline only\b")
+
+
+def network_allowed(payload,base=None):
+    """False when the turn or the speaker's own words rule out web access for this turn."""
+    if payload.get('allow_network') is False or payload.get('network_allowed') is False:
+        return False
+    text=current_text(payload,directives_only=True,base=base)
+    return not any(re.search(pattern,text,re.I) for pattern in _NO_NETWORK)
 
 
 def current_text(payload,*,directives_only=False,base=None,include_quotes=True):
@@ -33,7 +49,7 @@ def current_text(payload,*,directives_only=False,base=None,include_quotes=True):
     for row in current:
         text=str(row.get('text',''))[:12000]
         if 'voice.read message_id=' in text:
-            from hakimi.voice.store import policy_text
+            from hakimi.memory.voice_receipts import policy_text
             from hakimi import paths
             transcript=policy_text(base or paths.base(),session,str(row.get('message_id','')))
             text+='\n'+(transcript or '禁止联网：此语音原文暂不可用')

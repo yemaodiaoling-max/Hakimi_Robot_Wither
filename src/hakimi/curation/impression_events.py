@@ -115,7 +115,7 @@ def _packet(db,job):
             'events':events}
 
 def classify(packets,base,*,daily=()):
-    from hakimi.memory.review_runtime import classify as run_review
+    from hakimi.curation.review_runtime import classify as run_review
     from hakimi.memory.daily_events import INSTRUCTION
     from hakimi.memory.relationship_policy import CLASSIFICATION_PROTOCOL
     task=(
@@ -365,7 +365,8 @@ def _current_choice(value,choices,packets=()):
 def tick(base,now=None,*,runner=None):
     """Invoked by the existing five-minute maintenance tick; no extra daemon."""
     from hakimi.memory.memory_store import store
-    from hakimi.memory import daily_events, relationship_events, review_runtime
+    from hakimi.memory import daily_events, relationship_events
+    from hakimi.curation import review_runtime
     if runner is None and not review_runtime.is_enabled(base):
         return {'status':'idle','classified':0,'reason':'review_disabled'}
     real_time=now is None
@@ -415,7 +416,7 @@ def tick(base,now=None,*,runner=None):
     if not packets and not daily:return {'status':'idle','classified':0}
     try:
         result=runner(packets,base) if runner else classify(packets,base,daily=daily)
-        from hakimi.memory.review_runtime import reviewer_metadata
+        from hakimi.curation.review_runtime import reviewer_metadata
         review_metadata=reviewer_metadata(result)
         if daily and (not isinstance(result,dict) or 'daily_events' not in result):raise ValueError('missing_daily_events')
         items=result.get('items',[]) if isinstance(result,dict) else result
@@ -492,7 +493,7 @@ def tick(base,now=None,*,runner=None):
         return {'status':'completed','classified':len(packets),'daily_events':len(daily_items),'relationship_events':len(relation_items)}
     except Exception as exc:
         now=time.time() if real_time else now
-        from hakimi.memory.review_runtime import error_code
+        from hakimi.curation.review_runtime import error_code
         from hakimi.memory.review_audit import record as audit
         code=error_code(exc)
         with index.db() as db:

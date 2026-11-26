@@ -6,7 +6,7 @@
 
 收发群聊/私聊消息、图片与文件，管理回复窗口和群路由。
 
-- 模块：`hakimi.transport.official_transport`、`hakimi.transport.official_routes`、`hakimi.transport.official_api`、`hakimi.transport.official_lane`、`hakimi.transport.official_files`、`hakimi.transport.official_groups`
+- 模块：`hakimi.transport.official_transport`、`hakimi.transport.official_routes`、`hakimi.transport.official_api`、`hakimi.transport.official_lane`、`hakimi.transport.official_files`、`hakimi.chat.official_groups`
 - 模型可调用的工具：`members.mention`
 - 开关：service `hakimi-worker`；config `runtime:official_lane_config.json:allow_private_chat`（私聊）
 
@@ -22,7 +22,7 @@
 
 同一用户滚动30分钟最多7轮，Gemini与DSH共用，分条回复只计一轮。
 
-- 模块：`hakimi.bridge.user_reply_quota`、`hakimi.bridge.turn_coordinator`、`hakimi.bridge.bridge_daemon`
+- 模块：`hakimi.chat.user_reply_quota`、`hakimi.bridge.turn_coordinator`、`hakimi.bridge.bridge_daemon`
 - 备注：发布任务前检查，提交回复时按实际回复对象复查；历史随turn_state持久化，跨群及私聊共用同一user_id额度。
 
 ## 冷场主动抛话题（`cold_topics`）
@@ -59,7 +59,7 @@
 
 本地CPU转写、会话私有原文与明确请求时的原创音色/短哼唱。
 
-- 模块：`hakimi.voice.store`、`hakimi.voice.worker`、`hakimi.voice.delivery`、`hakimi.voice.tts`
+- 模块：`hakimi.memory.voice_receipts`、`hakimi.voice.worker`、`hakimi.voice.delivery`、`hakimi.voice.tts`
 - 模型可调用的工具：`voice.read`、`voice.speak`、`voice.hum`
 - 开关：service `hakimi-voice`；config `root:voice_config.json:enabled`；config `root:voice_config.json:tts_enabled`（明确请求发声）
 
@@ -75,7 +75,7 @@
 
 在既有人物笔记批次中整理少量真实事件，支持复用主网关或独立复盘 API。
 
-- 模块：`hakimi.memory.daily_events`、`hakimi.memory.impression_events`、`hakimi.memory.relationship_events`、`hakimi.memory.post_reply_review`、`hakimi.memory.review_runtime`、`hakimi.memory.review_audit`、`hakimi.memory.relationship_history`、`hakimi.memory.store_maintenance`
+- 模块：`hakimi.memory.daily_events`、`hakimi.curation.impression_events`、`hakimi.memory.relationship_events`、`hakimi.curation.post_reply_review`、`hakimi.curation.review_runtime`、`hakimi.memory.review_audit`、`hakimi.memory.relationship_history`、`hakimi.memory.store_maintenance`
 - 开关：config `root:aux_config.json:review.enabled`
 - 备注：真实回复窗口结束后异步复盘，可通过 aux_config.json 配置走主网关、独立 HTTP API、伴侣通道或关闭；保留有界短审核理由与来源，区分事实、关系与原话角色。
 
@@ -105,7 +105,7 @@
 
 每两小时挑选最多三位成员整理印象与记忆（不发群消息）。
 
-- 模块：`hakimi.memory.personal_review`、`hakimi.memory.review_select`
+- 模块：`hakimi.curation.personal_review`、`hakimi.memory.review_select`
 
 ## QQ 绘图（`drawing`）
 
@@ -126,7 +126,7 @@ Markdown/TeX 公式本地排成图片发送。
 
 发送本地文件、导出聊天记录。
 
-- 模块：`hakimi.transport.file_delivery`、`hakimi.transport.official_files`
+- 模块：`hakimi.chat.file_delivery`、`hakimi.transport.official_files`
 - 模型可调用的工具：`files.list`、`files.send`、`chat.export`
 
 ## 表情包（`stickers`）
@@ -141,7 +141,7 @@ Markdown/TeX 公式本地排成图片发送。
 
 读取本轮授权的图片；按需抽帧观看 B 站与 QQ 小程序视频。
 
-- 模块：`hakimi.transport.image_permissions`、`hakimi.tools.bilibili_video`、`hakimi.models.fallback_media`
+- 模块：`hakimi.chat.image_permissions`、`hakimi.tools.bilibili_video`、`hakimi.models.fallback_media`
 - 模型可调用的工具：`images.list`、`video.watch`、`video.watch_attachment`、`video.watch_miniapp`
 
 ## 私有日记（`diary`）

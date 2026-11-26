@@ -1,7 +1,7 @@
 """Join a resolved group recipient to formatted QQ text, after bubble escaping."""
 import re
 
-from hakimi.bridge.reply_format import MAX_SEGMENT_CHARS
+from hakimi.chat.reply_format import MAX_SEGMENT_CHARS
 
 _QUOTE = re.compile(r'^\[CQ:reply,id=-?\d+\]')
 _BARE_LOCAL = re.compile(r'^@([1-9][0-9]{18})(?=\s|$)')

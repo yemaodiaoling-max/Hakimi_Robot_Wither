@@ -1,10 +1,11 @@
 """Small offline checks for host-owned relationship event scores."""
 import unittest
-from hakimi.memory import daily_events, post_reply_review
+from hakimi.memory import daily_events
+from hakimi.curation import post_reply_review
 from hakimi.memory.relationship_policy import (
     CLASSIFICATION_PROTOCOL, EVENT_TYPES, normalize_event, score_change,
 )
-from hakimi.prompt.prompt_language import DEFENSIVE, prompt
+from hakimi.persona.prompt_language import DEFENSIVE, prompt
 
 
 class RelationshipPolicyTests(unittest.TestCase):

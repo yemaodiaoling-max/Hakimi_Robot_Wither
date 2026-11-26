@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from hakimi.transport.image_permissions import register_cached_image
+from hakimi.chat.image_permissions import register_cached_image
 from hakimi.prompt import prompt_compaction as compact
 from hakimi.prompt import prompt_context
 from hakimi.transport import official_waiter

@@ -9,17 +9,17 @@ import time
 import unittest
 from unittest.mock import AsyncMock
 
-from hakimi.bridge import bot_registry
-from hakimi.bridge.reply_format import text_bubbles
+from hakimi.chat import bot_registry
+from hakimi.chat.reply_format import text_bubbles
 from hakimi.bridge.turn_coordinator import TurnCoordinator
-from hakimi.bridge.turn_lanes import lane_context, lane_id
+from hakimi.chat.turn_lanes import lane_context, lane_id
 from hakimi.models.dsh_tools import resolve_tools
 from hakimi.models.fallback_commit import submit_fallback_result
 from hakimi.models.fallback_runner import parse_response
 from hakimi.models.provider_health import ProviderHealth
 from hakimi.models.vertex_session import VertexSession
 from hakimi.prompt.prompt_context import activate_context
-from hakimi.transport.member_mentions import mention
+from hakimi.chat.member_mentions import mention
 from hakimi.transport.official_transport import OfficialAdapter, RouteStore
 from test_delivery_guard import OfflineEventLoop
 from test_official_adapter import fixture_root

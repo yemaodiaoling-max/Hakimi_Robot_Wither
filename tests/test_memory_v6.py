@@ -20,7 +20,7 @@ from hakimi.social import identity_links
 from hakimi.console import memory_console
 from hakimi.memory import memory_lifecycle
 from hakimi.social import memory_social
-from hakimi.memory import personal_review
+from hakimi.curation import personal_review
 from hakimi.prompt import prompt_context
 from hakimi.tools import qq_cli
 from hakimi.prompt import tool_catalog

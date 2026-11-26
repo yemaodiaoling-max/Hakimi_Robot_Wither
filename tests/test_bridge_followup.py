@@ -42,21 +42,21 @@ class BridgeFollowupTests(unittest.TestCase):
         self.result = {"accepted": True, "trigger_id": "accepted", "conversation_lane": ""}
         self.now = time.time() - 1
         self.real_modules = {name: importlib.import_module(name) for name in (
-            "hakimi.bridge.message_lifecycle", "hakimi.bridge.image_initiative",
-            "hakimi.bridge.reply_format", "hakimi.bridge.conversation_judge",
-            "hakimi.memory.memory_store", "hakimi.bridge.interaction_policy",
-            "hakimi.bridge.bot_registry", "hakimi.core.owner",
+            "hakimi.chat.message_lifecycle", "hakimi.bridge.image_initiative",
+            "hakimi.chat.reply_format", "hakimi.bridge.conversation_judge",
+            "hakimi.memory.memory_store", "hakimi.chat.interaction_policy",
+            "hakimi.chat.bot_registry", "hakimi.core.owner",
         )}
-        self.module("hakimi.bridge.message_lifecycle", entry=lambda *args, **kwargs: None,
+        self.module("hakimi.chat.message_lifecycle", entry=lambda *args, **kwargs: None,
                     record=lambda *args, **kwargs: None)
         self.module("hakimi.bridge.image_initiative", image_candidates=lambda *args: [], decide=None)
-        self.module("hakimi.bridge.reply_format", group_reply_rules=lambda *args: {})
+        self.module("hakimi.chat.reply_format", group_reply_rules=lambda *args: {})
         self.module("hakimi.bridge.conversation_judge", mention_context=lambda entry, rows, *args, **kwargs: rows)
         self.module("hakimi.memory.memory_store", store=lambda *args: SimpleNamespace(
             topic_signature=lambda *args: [], observe=lambda *args: None))
-        self.module("hakimi.bridge.interaction_policy", ignored=lambda *args, **kwargs: False,
+        self.module("hakimi.chat.interaction_policy", ignored=lambda *args, **kwargs: False,
                     ignored_text=lambda *args: False, known_ai=lambda *args: False)
-        self.module("hakimi.bridge.bot_registry", cooling=lambda *args: False)
+        self.module("hakimi.chat.bot_registry", cooling=lambda *args: False)
         self.module("hakimi.core.owner", local_terms=lambda *args: ())
 
     def module(self, name, **fields):

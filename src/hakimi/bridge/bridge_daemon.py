@@ -30,7 +30,7 @@ import uuid
 from collections import OrderedDict, deque
 from pathlib import Path
 from hakimi.transport import onebot_media, onebot_websocket
-from hakimi.transport.image_permissions import register_cached_image
+from hakimi.chat.image_permissions import register_cached_image
 from hakimi.models.fallback_supervisor import coordinator_for, fallback_loop
 from hakimi.bridge.participation_policy import (exploration_context_allowed,
                                   rank_exploration_candidates, reserve_exploration,
@@ -248,7 +248,7 @@ class DynamicHakimiEngine:
 
         if addressed is None:
             addressed = direct_attention(event, cfg)
-        from hakimi.bridge.bot_registry import cooling
+        from hakimi.chat.bot_registry import cooling
         if cooling(BASE_DIR,user_id,now):return False,['机器人接话冷却，仅记录上下文'],clean_text
         ts_q = self.recent_msg_timestamps.setdefault(session_key, deque(maxlen=20))
         ts_q.append(now)
@@ -636,7 +636,7 @@ class DynamicHakimiEngine:
 
     def close_reply_review(self, session, delivering=False):
         try:
-            from hakimi.memory.post_reply_review import close
+            from hakimi.curation.post_reply_review import close
             close(BASE_DIR,session,time.time(),delivering=delivering,
                   humans=list(self.context_windows.get(session, ())))
             self.reply_review_event.set()
@@ -645,17 +645,17 @@ class DynamicHakimiEngine:
 
     def record_reply_review(self, session, receipt_id, text, message_id, trigger, now, targets):
         try:
-            from hakimi.memory.post_reply_review import receipt
+            from hakimi.curation.post_reply_review import receipt
             receipt(BASE_DIR,session,receipt_id,text,message_id,trigger,now,
                     humans=list(self.context_windows.get(session, ())),target_ids=targets)
         except Exception:
             report_fault(BASE_DIR,'post_reply_review',code='REVIEW_RECEIPT_FAILED')
 
     def finish_reply_review(self, session, now,trigger_id=''):
-        from hakimi.voice.store import scoped_turn
+        from hakimi.memory.voice_receipts import scoped_turn
         if scoped_turn(BASE_DIR,session,trigger_id):return
         try:
-            from hakimi.memory.post_reply_review import delivery_finished
+            from hakimi.curation.post_reply_review import delivery_finished
             state=self.conversation_scheduler.groups.get(session)
             delivery_finished(BASE_DIR,session,now,listening=bool(state and state.listen_round),
                               humans=list(self.context_windows.get(session, ())))
@@ -666,7 +666,7 @@ class DynamicHakimiEngine:
     def mark_replied(self, session_key: str, cfg: dict, is_proactive: bool = False, *, reply_text="", message_id=None, trigger_id=""):
         now = time.time()
         source=self.conversation_scheduler.offer_sources.get(trigger_id,{})
-        from hakimi.voice.store import scoped_turn
+        from hakimi.memory.voice_receipts import scoped_turn
         if adaptive_enabled(cfg) and reply_text and trigger_id and source.get('session')==session_key and not scoped_turn(BASE_DIR,session_key,trigger_id):
             try:
                 from hakimi.memory.memory_store import store
@@ -848,7 +848,7 @@ def enqueue_directed(session_key, row, score, reasons, cfg, prior=None):
     engine.trigger_queue.insert(0 if position is None else len(engine.trigger_queue) - position, entry)
     remember_directed(entry)
     _prewarm_mention_context(entry, cfg)
-    from hakimi.bridge.message_lifecycle import entry as audit_entry
+    from hakimi.chat.message_lifecycle import entry as audit_entry
     audit_entry(BASE_DIR, entry, 'queued_local')
     flush_trigger_queue_if_waiting(entry if prior is not None else None)
 
@@ -903,7 +903,7 @@ def enqueue_wake_beacon(session_key: str, mode: str, score: float, reasons: list
         engine.trigger_queue.appendleft(entry)
     else:
         engine.trigger_queue.append(entry)
-    from hakimi.bridge.message_lifecycle import entry as audit_entry
+    from hakimi.chat.message_lifecycle import entry as audit_entry
     audit_entry(BASE_DIR,entry,'queued_local')
     print(f"   ★ [{mode}] 已入队 -> {session_key} ({' | '.join(reasons)}) [队列长度: {len(engine.trigger_queue)}]")
     flush_trigger_queue_if_waiting()
@@ -911,7 +911,7 @@ def enqueue_wake_beacon(session_key: str, mode: str, score: float, reasons: list
 
 
 def _mention_inputs(entry, cfg, now):
-    from hakimi.bridge.interaction_policy import ignored, ignored_text
+    from hakimi.chat.interaction_policy import ignored, ignored_text
     session_key = entry["session_key"]
     rows = [row for row in engine.context_windows.get(session_key, [])
             if not ignored(row.get('user_id'), BASE_DIR, cfg, session=session_key)
@@ -978,7 +978,7 @@ def flush_trigger_queue_if_waiting(entry=None):
     if not replace_trigger_id and not WAITING_FLAG.exists() and not cfg.get("fallback", {}).get("enabled", False):
         return
     coordinator = coordinator_for(BASE_DIR, cfg)
-    from hakimi.bridge.message_lifecycle import entry as audit_entry
+    from hakimi.chat.message_lifecycle import entry as audit_entry
     session_key = entry["session_key"]
     mode = entry["mode"]
     reply_lane = engine.conversation_scheduler.group(session_key).reply_lane
@@ -1058,7 +1058,7 @@ def flush_trigger_queue_if_waiting(entry=None):
             engine.trigger_queue.remove(entry)
             return
         score = adjusted
-    from hakimi.bridge.reply_format import group_reply_rules
+    from hakimi.chat.reply_format import group_reply_rules
     probability = group_reply_rules(session_key, cfg).get('proactive_probability', 1)
     if mode not in ("即时唤醒(被@/私聊)", "被@后监听窗口", "相关话题续聊") and probability < 1:
         # Sample once per queued opportunity, never once per polling tick.
@@ -1303,7 +1303,7 @@ def conversation_window_rows(session, started, through, cached=()):
         if started < float(row.get("received_at", 0)) <= through and row.get("user_id") != "SELF":
             by_id[str(row.get("message_id", ""))] = dict(row)
     cfg = load_config()
-    from hakimi.bridge.interaction_policy import ignored, ignored_text
+    from hakimi.chat.interaction_policy import ignored, ignored_text
     return sorted([row for row in by_id.values() if not ignored(row.get("user_id"), BASE_DIR, cfg, session=session)
                    and not ignored_text(row.get("text", ""), cfg)], key=lambda row: row.get("received_at", 0))
 
@@ -1326,7 +1326,7 @@ async def process_incoming_event(event: dict):
     user_id = str(event.get("user_id", ""))
     self_id = str(event.get("self_id", cfg["bot_profile"].get("self_qq", bot_identity.SELF_QQ)))
     ignored_users = {str(uid) for uid in cfg["bot_profile"].get("ignored_user_ids", [])}
-    from hakimi.bridge.interaction_policy import known_ai
+    from hakimi.chat.interaction_policy import known_ai
     if user_id == self_id or user_id in ignored_users and not known_ai(user_id,cfg):
         return
 
@@ -1336,14 +1336,14 @@ async def process_incoming_event(event: dict):
     if not session_is_allowed(session_key, cfg):
         return
     if msg_type=='group' and known_ai(user_id,cfg):
-        from hakimi.bridge.bot_registry import platform
+        from hakimi.chat.bot_registry import platform
         platform(BASE_DIR,user_id,event.get('sender',{}).get('nickname',''),session_key)
-    from hakimi.bridge.interaction_policy import ignored
+    from hakimi.chat.interaction_policy import ignored
     if ignored(user_id,BASE_DIR,cfg,bot_cooldown=False,session=session_key):return
     message_id = event.get("message_id")
     if event.get('_voice_attachments') and not event.get('_voice_done'):
-        from hakimi.voice.store import enqueue
-        from hakimi.bridge.interaction_policy import ignored_text
+        from hakimi.memory.voice_receipts import enqueue
+        from hakimi.chat.interaction_policy import ignored_text
         native_raw=str(event.get('raw_message',''))
         if ignored_text(native_raw,cfg):return
         enqueue(BASE_DIR,event,priority=msg_type=='private' or direct_attention(event,cfg))
@@ -1358,7 +1358,7 @@ async def process_incoming_event(event: dict):
             RECENT_EVENT_IDS.popitem(last=False)
     nickname = event.get("sender", {}).get("card") or event.get("sender", {}).get("nickname", f"QQ_{user_id}")
     raw_text = event.get("raw_message", "").strip()
-    from hakimi.bridge.interaction_policy import ignored_text
+    from hakimi.chat.interaction_policy import ignored_text
     if ignored_text(raw_text,cfg):return
     addressed = direct_attention(event, cfg)
     prior = None
@@ -1389,7 +1389,7 @@ async def process_incoming_event(event: dict):
         # claim the wake.  No transcript is copied into the general memory.
         try:
             from hakimi.memory.memory_store import store as voice_memory_store
-            from hakimi.voice.store import acknowledge as acknowledge_voice
+            from hakimi.memory.voice_receipts import acknowledge as acknowledge_voice
             voice_source={'session_key':session_key,'message_id':str(message_id),'user_id':user_id,'nickname':nickname,'received_at':event['_voice_received_at'],'text':cleaned,'channel':'voice','direct_targets':sorted(set(re.findall(r'\[CQ:at,qq=([0-9]+)\]',raw_text))),'self_id':str(self_id)}
             native_ref=re.search(r'\[CQ:reply,id=(-?[0-9]{1,20})\]',raw_text)
             voice_source['reply_to']=native_ref[1] if native_ref else ''
@@ -1455,7 +1455,7 @@ async def process_incoming_event(event: dict):
     if (prior is not None and row and row["session_key"] == session_key and clean_text
             and row["received_at"] >= prior["direct_messages"][-1]["received_at"]
             and cfg.get("lurker_schedule", {}).get("instant_wake_on_at_or_private", True)):
-        from hakimi.bridge.bot_registry import cooling
+        from hakimi.chat.bot_registry import cooling
         from hakimi.core.owner import local_terms
         if not (cooling(BASE_DIR, user_id) or user_id in local_terms("no_instant_wake_ids")):
             from hakimi.bridge.followup_native import is_continuation
@@ -1543,7 +1543,7 @@ async def maybe_schedule_cold_topic(cfg,cold):
 
 async def relationship_review_loop():
     """One bounded background lane. Event/due timers, never a speaking lock."""
-    from hakimi.memory import post_reply_review, impression_events
+    from hakimi.curation import post_reply_review, impression_events
     # No network request in recover; restored live windows remain open.
     try:
         await asyncio.to_thread(post_reply_review.recover,BASE_DIR,engine.conversation_scheduler,time.time())
@@ -1922,7 +1922,7 @@ async def watch_simulation_and_outbox():
                 guard.finish_attempt(result["status"])
                 if result["status"] == "success":
                     text=result.get("sent_text",text)
-                    from hakimi.bridge.interaction_policy import delivered
+                    from hakimi.chat.interaction_policy import delivered
                     delivered(session_key,receipt,interaction,first_segment,BASE_DIR,text=text,provider=provider,
                               trigger_id=trigger_id,message_id=result.get('message_id'),
                               sticker_digest=result.get('sticker_digest'))
@@ -1948,7 +1948,7 @@ async def watch_simulation_and_outbox():
                         [actual_target_id] if actual_target_id else reply_source.get('message_ids',[]))
                     if adaptive_enabled(cfg):
                         engine.conversation_scheduler.observe_reply(session_key, time.time())
-                    from hakimi.bridge.bot_registry import cooling
+                    from hakimi.chat.bot_registry import cooling
                     bot=(interaction or {}).get('bot_target')
                     if bot and cooling(BASE_DIR,bot):
                         scheduler=engine.conversation_scheduler

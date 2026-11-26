@@ -8,11 +8,11 @@ import time
 import unittest
 from unittest.mock import AsyncMock,Mock,patch
 from datetime import datetime,timezone
-from hakimi.transport.member_mentions import wire_text
+from hakimi.chat.member_mentions import wire_text
 from hakimi.transport.official_transport import OfficialAdapter
 from hakimi.transport.official_routes import RouteStore
 from hakimi.transport.official_api import OfficialAPI
-from hakimi.bridge.reply_format import text_bubbles
+from hakimi.chat.reply_format import text_bubbles
 from test_delivery_guard import OfflineEventLoop
 
 
@@ -80,7 +80,7 @@ class OfficialMentionContractTests(unittest.IsolatedAsyncioTestCase):
             data={'id':'INPUT'+str(index),'group_openid':'FIXTURE_GROUP','content':'hello',
                   'author':{'id':'DIFFERENT_ACCOUNT_'+str(index),'member_openid':member,'bot':is_bot,'username':'样例成员'},
                   'timestamp':datetime.fromtimestamp(self.now,timezone.utc).isoformat()}
-            with patch('hakimi.bridge.bot_registry.platform'):
+            with patch('hakimi.chat.bot_registry.platform'):
                 event=await self.adapter.translate('GROUP_MESSAGE_CREATE',data)
             self.assertEqual(str(event['user_id']),self.store.actor(member))
             self.assertNotEqual(str(event['user_id']),self.store.actor(data['author']['id']))

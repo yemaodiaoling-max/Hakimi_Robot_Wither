@@ -465,7 +465,7 @@ class StoreRetrievalMixin:
                     remaining -= len(line)
                     if len(result) >= total_limit:
                         break
-            from hakimi.voice.store import search as voice_search
+            from hakimi.memory.voice_receipts import search as voice_search
             voice_hits=voice_search(self.base,session,query,limit=min(2,total_limit))
             voice_lines=[f"[语音:{hit['message_id']}] 本会话自动转写（可能有误，voice.read读原文）：{hit['text']}" for hit in voice_hits]
             combined=[];remaining=total_budget

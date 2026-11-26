@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-from hakimi.transport.official_base import OfficialError, SELF_ALIAS, fixed_json; from hakimi.transport.official_routes import RouteStore
+from hakimi.chat.official_base import OfficialError, SELF_ALIAS, fixed_json; from hakimi.transport.official_routes import RouteStore
 
 BASE = paths.root()
 RUNTIME_NAME = "official_test_runtime"
@@ -119,7 +119,7 @@ def prepare(base=BASE):
     (runtime / "memory.md").write_text("旧记忆只通过本群明确映射导入，不加载全局记忆。\n", encoding="utf-8")
     fixed_json(runtime / "official_lane_config.json", cfg)
     if cfg.get("operation_mode") == "normal":
-        from hakimi.transport.official_groups import adapt_group
+        from hakimi.chat.official_groups import adapt_group
         for route in store.get("group_routes", {}).values():
             adapt_group(runtime, route)
     from hakimi.ops import shims

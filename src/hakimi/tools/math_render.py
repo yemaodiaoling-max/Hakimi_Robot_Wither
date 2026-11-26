@@ -9,24 +9,12 @@ import tempfile
 import time
 import uuid
 
-from hakimi.bridge.reply_format import text_bubbles
+from hakimi.core.tool_log import log_tool_call  # noqa: F401  (historical import location)
+from hakimi.chat.reply_format import text_bubbles
 
 WIDTH = 1100
 DPI = 144
 LITERAL_FONT='Cambria Math' if os.name=='nt' else 'DejaVu Serif'
-
-
-def log_tool_call(base,name,status,**fields):
-    """Tiny bounded diagnostics: no prompts, arguments, tokens or tool output."""
-    try:
-        path=Path(base)/'state/tool_calls.jsonl';path.parent.mkdir(exist_ok=True)
-        if path.exists() and path.stat().st_size>1024*1024:
-            with path.open('rb') as stream:
-                stream.seek(-262144,2);tail=stream.read().partition(b'\n')[2]
-            path.write_bytes(tail)
-        with path.open('a',encoding='utf-8') as stream:
-            stream.write(json.dumps(dict(at=time.time(),tool=name,status=status,**fields))+'\n')
-    except OSError:pass
 
 
 _MATH_RUN=r"[A-Za-z0-9\u0370-\u03ff\u2070-\u209f\\{}()\[\]_^+\-−*/·×÷.,'′″]"
@@ -310,10 +298,10 @@ def markdown_tex(markdown):
 
 def render(spec,session,base):
     import pymupdf as fitz
-    from hakimi.transport.file_delivery import directory, resolve
+    from hakimi.chat.file_delivery import directory, resolve
     from urllib.parse import quote
     spec=validate(spec)
-    from hakimi.bridge.interaction_policy import blocked_outgoing_topic
+    from hakimi.chat.interaction_policy import blocked_outgoing_topic
     if blocked_outgoing_topic(spec['markdown']):raise ValueError('ignored_topic')
     compiler=shutil.which('xelatex')
     if not compiler:raise ValueError('本机缺少XeLaTeX')

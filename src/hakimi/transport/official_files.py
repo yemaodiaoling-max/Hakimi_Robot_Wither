@@ -18,7 +18,7 @@ def hashes(path):
 
 
 def put_part(url, path, offset, length):
-    from hakimi.transport.official_base import OfficialError, NoRedirect
+    from hakimi.chat.official_base import OfficialError, NoRedirect
     parsed = urlsplit(url)
     if parsed.scheme != "https" or parsed.username or parsed.password:
         raise OfficialError("INVALID_UPLOAD_PART_URL")
@@ -43,7 +43,7 @@ def put_part(url, path, offset, length):
 
 
 async def upload(api, group, path, kind, *, private=False):
-    from hakimi.transport.official_base import OfficialError
+    from hakimi.chat.official_base import OfficialError
     stat = path.stat()
     fingerprint = ("users" if private else "groups",group,str(path),stat.st_mtime_ns,stat.st_size,kind)
     cache = getattr(api, "_file_cache", {})

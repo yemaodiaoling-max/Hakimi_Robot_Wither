@@ -78,7 +78,7 @@ def command(executable, runtime, model=None):
 
 
 def bounded_process(args, prompt, runtime, env, timeout):
-    from hakimi.prompt.prompt_language import prompt as positive_prompt
+    from hakimi.persona.prompt_language import prompt as positive_prompt
     prompt=positive_prompt(prompt)
     # The trusted wrapper blocks on stdin until its process tree belongs to our job.
     # Some native CLIs spawn children or exit before direct Job assignment completes.

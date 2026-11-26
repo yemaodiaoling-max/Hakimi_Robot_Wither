@@ -4,8 +4,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from hakimi.bridge.interaction_policy import delivered
-from hakimi.transport.sent_media_context import enrich_sent_rows, recalled_sticker
+from hakimi.chat.interaction_policy import delivered
+from hakimi.chat.sent_media_context import enrich_sent_rows, recalled_sticker
 
 
 class SentMediaContextTests(unittest.TestCase):

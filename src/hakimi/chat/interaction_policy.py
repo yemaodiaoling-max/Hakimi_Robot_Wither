@@ -1,6 +1,5 @@
 """Small delivered-message counters; models classify conflicts, never keywords."""
 import json
-import math
 from pathlib import Path
 import re
 import time
@@ -34,7 +33,7 @@ def blocked_outgoing_topic(text):
 
 
 def ignored(user,base,cfg=None,now=None,*,bot_cooldown=True,session=''):
-    from hakimi.bridge.bot_registry import confirmed,cooling
+    from hakimi.chat.bot_registry import confirmed,cooling
     if bot_cooldown and cooling(base,user,now):return True
     if session.startswith('private:'):return False
     if confirmed(base,user) or cfg and known_ai(user,cfg):return False
@@ -51,7 +50,7 @@ def annotation(payload,kind,base,target_id=None):
     if not re.fullmatch(r'[1-9][0-9]{0,19}',user):return None
     cfg=read_json_cached(Path(base)/'config.json',{})
     if ignored_text(target.get('text',''),cfg):raise ValueError('目标消息命中硬忽略词')
-    from hakimi.bridge.bot_registry import confirmed,cooling
+    from hakimi.chat.bot_registry import confirmed,cooling
     if cooling(base,user):raise ValueError('机器人十分钟接话冷却中')
     if kind!='ai' and ignored(user,base,cfg,session=payload.get('session_key','')):raise ValueError('该用户处于一小时争吵冷静期')
     return {'user_id':user,'kind':'ai' if confirmed(base,user) or target.get('is_bot') is True or known_ai(user,cfg) else kind or 'normal'}
@@ -78,7 +77,7 @@ def delivered(session,receipt,interaction,first,base,now=None,*,text='',provider
             with (Path(base)/'state/interaction_events.jsonl').open('a',encoding='utf-8') as stream:
                 stream.write(json.dumps({'at':now,'event':'conflict_cooldown','user_id':uid,'session_key':session,'until':now+3600})+'\n')
     if first and interaction:
-        from hakimi.bridge.bot_registry import delivered as bot_delivered
+        from hakimi.chat.bot_registry import delivered as bot_delivered
         bot_delivered(base,interaction['user_id'],receipt,now)
     data['users']={uid:row for uid,row in users.items() if now-row.get('at',0)<86400 or row.get('until',0)>now}
     path=Path(base)/'state/interaction_policy.json'
@@ -93,7 +92,7 @@ def delivered(session,receipt,interaction,first,base,now=None,*,text='',provider
     plain=re.sub(r'\[CQ:[^\]]*\]','',text).strip()
     if text.startswith('[CQ:file,'):
         try:
-            from hakimi.transport.file_delivery import from_segment
+            from hakimi.chat.file_delivery import from_segment
             from hakimi.voice.tts import describe as describe_voice
             path,kind=from_segment(text,session,base)
             if kind==3:plain=describe_voice(base,session,path.name) or plain
@@ -101,32 +100,9 @@ def delivered(session,receipt,interaction,first,base,now=None,*,text='',provider
     row = {'at':now,'session_key':session,'provider':provider,'trigger_id':trigger_id,
            'message_id':message_id,'text':plain[:1500]}
     if '[CQ:' in text:
-        from hakimi.transport.sent_media_context import media_descriptor
+        from hakimi.chat.sent_media_context import media_descriptor
         media = media_descriptor(text, base, sticker_digest)
         if media:
             row['media'] = media
     with log.open('a',encoding='utf-8') as stream:
         stream.write(json.dumps(row,ensure_ascii=False)+'\n')
-
-
-def guidance(payload,base,now=None):
-    now=time.time() if now is None else now
-    session=payload.get('session_key','')
-    cfg=read_json_cached(Path(base)/'config.json',{})
-    from hakimi.prompt.group_profiles import resolve_profile
-    profile,_=resolve_profile(session,Path(base))
-    count=sum(0<=now-at<WINDOW for at in state(base).get('groups',{}).get(session,[]))
-    study=profile['name']=='study_calm' or session.removeprefix('group:') in {
-        str(g) for g in cfg.get('participation_policy',{}).get('study_groups',[])}
-    hints=[]
-    if session.startswith('group:') and not study and count>6:
-        scale=max(.45,math.exp(-.10*(count-6)))
-        hints.append(f'本群8分钟内已发{count}条；本轮日常聊天长度偏好约为平时{scale:.0%}，自然缩短并给别人空间；不硬截断，必要的专业论证仍完整。')
-    from hakimi.core.context_window import select_context
-    target=select_context(payload)[1]
-    rounds=state(base).get('users',{}).get(str(target.get('user_id','')),{}).get('rounds',0)
-    if rounds and not session.startswith('private:'):hints.append(f'当前对象此前连续争吵{rounds}/3轮；仅确属对你争吵且希望结束拉扯时标conflict，正常分歧不标，AI互动标ai豁免。')
-    from hakimi.bridge.bot_registry import guidance as bot_guidance
-    bot_note=bot_guidance(base,payload)
-    if bot_note:hints.append(bot_note)
-    return '\n'.join(hints)

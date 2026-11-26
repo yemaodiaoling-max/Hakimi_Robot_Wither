@@ -224,7 +224,7 @@ class ConversationScheduler:
                 or (profile.get("active_groups") and gid not in {str(v) for v in profile["active_groups"]})))
                 or (kind == "private" and not profile.get("allow_private_chat", True))):
             return Decision("silent", False, 0, 30)
-        from hakimi.bridge.bot_registry import labels
+        from hakimi.chat.bot_registry import labels
         bots=labels(self.path.parent.parent) if self.path else {}
         cooled={uid for uid,row in bots.items() if row['status']=='confirmed' and row['cooldown']>now}
         pending = [row for row in state.pending if 0 <= now-row[0] <= 600 and str(row[1]) not in cooled]

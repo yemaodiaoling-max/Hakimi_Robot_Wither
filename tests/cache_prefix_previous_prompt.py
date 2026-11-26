@@ -6,10 +6,10 @@ import sqlite3
 import time
 import uuid
 from pathlib import Path
-from hakimi.transport.image_permissions import allowed_images_for_session
+from hakimi.chat.image_permissions import allowed_images_for_session
 from hakimi.tools.sticker_policy import evaluate_sticker
 from hakimi.tools.sticker_catalog import available_stickers
-from hakimi.bridge.quote_policy import quote_candidates
+from hakimi.chat.quote_policy import quote_candidates
 from hakimi.core.time_tool import wake_time
 from hakimi.prompt.prompt_compaction import clean_text, dumps_context
 from hakimi.core.context_window import select_context
@@ -58,7 +58,7 @@ def resolve_profile(session_key, base=BASE_DIR):
     name = group.get("profile", cfg.get("private_profile" if kind == "private" else "default_profile", "quiet_default"))
     profile = cfg.get("profiles", {}).get(name, cfg.get("profiles", {}).get("quiet_default", {}))
     from hakimi.core.runtime_io import read_json_cached
-    from hakimi.bridge.reply_format import group_reply_rules
+    from hakimi.chat.reply_format import group_reply_rules
     rules = group_reply_rules(session_key, read_json_cached(base / 'config.json', {}))
     if rules:
         profile = dict(profile, length=f"本群每轮合计不超过{rules['max_chars']}字，最多{rules['max_messages']}条消息（图片、附件也计条数）。被@或专业讨论也遵守；保持原来的口吻，优先简短完整地回答。")
@@ -229,10 +229,10 @@ def build_context(data, base=BASE_DIR, now=None):
     feeding = feeding_context(session, messages, target, base)
     if feeding:
         context["feeding"] = feeding
-    from hakimi.bridge.interaction_policy import guidance
+    from hakimi.prompt.interaction_hints import guidance
     pressure=guidance(data,base,now)
     if pressure:context['current_interaction_preference']=pressure
-    from hakimi.transport.file_delivery import menu
+    from hakimi.chat.file_delivery import menu
     files = [] if data.get('cold_topic_request') else menu(session, base)
     if files:context["available_files"] = files
     if isinstance(data.get("listening_window"), dict):
@@ -284,7 +284,7 @@ def _persona_section(base, limit=6000):
 
 
 def render_internal_review_prompt(data,base=BASE_DIR,claim=None,*,cli_label=None):
-    from hakimi.prompt.prompt_language import PERSONA
+    from hakimi.persona.prompt_language import PERSONA
     from hakimi.prompt.tool_catalog import brief
     footer=f" --session {data['session_key']} --turn {claim['token']}" if claim else ''
     return PERSONA+'\n本轮整理人物与记忆。阅读候选及其来源，按需要选择记忆工具，完成后调用reply.skip。\n'+brief(cli_label or 'python qq_cli.py')+footer+'\n'+json.dumps(data.get('internal_review',{}),ensure_ascii=False)
@@ -341,7 +341,7 @@ def render_prompt(data,base=BASE_DIR,claim=None,*,cli_label=None,wait_after_turn
     if native:return render_vertex_prompt(data,base,claim)
     if isinstance(data.get('internal_review'),dict):return render_internal_review_prompt(data,base,claim,cli_label=cli_label)
     from hakimi.prompt.tool_catalog import brief
-    from hakimi.prompt.prompt_language import instructions,context as positive_context
+    from hakimi.persona.prompt_language import instructions,context as positive_context
     context=positive_context(build_context(data,base));style=instructions((Path(base)/'style_guide.md').read_text(encoding='utf-8'))
     if cli_label:style=style.replace('python qq_cli.py',cli_label)
     footer=f'\n本轮参数：--session "{data["session_key"]}" --turn "{claim["token"]}"' if claim else ''
@@ -404,11 +404,11 @@ if __name__ == "__main__":
 
 
 def render_vertex_prompt(data, base=BASE_DIR, claim=None):
-    from hakimi.prompt.prompt_language import PERSONA,context as positive_context,instructions
+    from hakimi.persona.prompt_language import PERSONA,context as positive_context,instructions
     if isinstance(data.get('internal_review'),dict):
         if claim:
             try:
-                from hakimi.memory.personal_review import mark_claimed
+                from hakimi.curation.personal_review import mark_claimed
                 mark_claimed(base,data['internal_review'].get('review_id',''),claim.get('trigger_id',''))
             except (OSError,ValueError,ImportError):pass
         return PERSONA+'\n本轮是人物与记忆回看。阅读候选资料，按自己的感受选择记忆或人物小本子工具，按字段保留原文与来源。整理完成调用reply.skip。\n'+json.dumps(data['internal_review'],ensure_ascii=False)
