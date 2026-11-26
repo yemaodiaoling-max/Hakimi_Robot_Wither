@@ -73,6 +73,7 @@ INCOMING_EVENTS = asyncio.Queue(maxsize=2000)
 RECENT_EVENT_IDS: OrderedDict = OrderedDict()
 DELIVERY_STATE_FILE = STATE_DIR / "delivery_state.json"
 STUDY_ATTENTION_SECONDS = 150
+MAX_FOLLOWUP_SOURCES = 12
 HISTORY_IO_LOCK = threading.RLock()
 
 
@@ -303,6 +304,8 @@ class DynamicHakimiEngine:
         self.conversation_scheduler.on_window_closed = self.close_reply_review
         # 待消费唤醒队列（避免多群并发唤醒丢失）
         self.trigger_queue: deque[dict] = deque()
+        self.directed_turns: OrderedDict[tuple[str, str], dict] = OrderedDict()
+        self.directed_sources: OrderedDict[tuple[str, str, str], dict] = OrderedDict()
 
     def get_group_weight_info(self, group_id: str, cfg: dict) -> dict:
         gw = cfg.get("group_weights", {}).get(group_id, {})
@@ -337,7 +340,8 @@ class DynamicHakimiEngine:
             print(f"动态调整参数出错: {e}")
 
     def record_and_score(self, event: dict, cfg: dict, clean_text: str | None = None,
-                         image_paths: list[str] | None = None, memory_nodes=()) -> tuple[bool, list[str], str]:
+                         image_paths: list[str] | None = None, memory_nodes=(),
+                         addressed: bool | None = None) -> tuple[bool, list[str], str]:
         msg_type = event.get("message_type", "group")
         user_id = str(event.get("user_id", ""))
         self_id = str(event.get("self_id", cfg["bot_profile"].get("self_qq", bot_identity.SELF_QQ)))
@@ -397,6 +401,8 @@ class DynamicHakimiEngine:
         self.unread_counts[session_key] = self.unread_counts.get(session_key, 0) + 1
         self.last_msg_is_self[session_key] = False
 
+        if addressed is None:
+            addressed = direct_attention(event, cfg)
         from hakimi.bridge.bot_registry import cooling
         if cooling(BASE_DIR,user_id,now):return False,['机器人接话冷却，仅记录上下文'],clean_text
         ts_q = self.recent_msg_timestamps.setdefault(session_key, deque(maxlen=20))
@@ -404,13 +410,12 @@ class DynamicHakimiEngine:
         msgs_in_60s = sum(1 for t in ts_q if now - t <= 60)
 
         if adaptive_enabled(cfg):
-            mentioned = direct_attention(event, cfg)
             reply_match = re.search(r"\[CQ:reply,id=(-?\d+)\]", raw_text)
             received_at = RECENT_EVENT_IDS.get((session_key, str(event.get("message_id"))), now)
             at_targets = re.findall(r"\[CQ:at,qq=([0-9]+)\]", raw_text)
             self.conversation_scheduler.observe(session_key, event.get('_voice_semantic') or clean_text, user_id, msg_id, received_at,
-                mentioned=mentioned, image=bool(image_paths), reply_to=reply_match.group(1) if reply_match else None,
-                addressed_other=bool(at_targets) and not mentioned,memory_nodes=memory_nodes)
+                mentioned=addressed, image=bool(image_paths), reply_to=reply_match.group(1) if reply_match else None,
+                addressed_other=bool(at_targets) and not addressed,memory_nodes=memory_nodes)
             decision = self.conversation_scheduler.decide(session_key, cfg, now)
             self.conversation_scheduler.audit_decision(session_key, decision, now)
             self.window_interest_score[session_key] = decision.score
@@ -423,8 +428,7 @@ class DynamicHakimiEngine:
         if session_key in self.pending_feedback and msg_type == "group":
             fb = self.pending_feedback[session_key]
             fb["msgs_since"] += 1
-            is_at = direct_attention(event, cfg)
-            if is_at:
+            if addressed:
                 self.update_group_dynamic_params(group_id, +0.03, -0.01, "发言后被明确提及")
                 del self.pending_feedback[session_key]
 
@@ -469,7 +473,6 @@ class DynamicHakimiEngine:
             self.window_hit_reasons.setdefault(session_key, []).extend(reasons)
 
         lurk_cfg = cfg.get("lurker_schedule", {})
-        is_at = direct_attention(event, cfg)
 
         # 防恶意刷屏骚扰：对持续无意义刷屏 @ 的群友不触发即时唤醒（owner.json: local.no_instant_wake_ids）
         from hakimi.core.owner import local_terms
@@ -477,7 +480,7 @@ class DynamicHakimiEngine:
             return False, reasons, clean_text
 
         if lurk_cfg.get("instant_wake_on_at_or_private", True):
-            if is_at and random.random() < lurk_cfg.get("at_me_prob", 0.95):
+            if addressed and random.random() < lurk_cfg.get("at_me_prob", 0.95):
                 return True, ["群内被@即时唤醒"] + reasons, clean_text
 
         return False, reasons, clean_text
@@ -881,6 +884,130 @@ engine = DynamicHakimiEngine()
 LAST_WAKE_WAS_PROACTIVE = False
 
 
+def followup_text(text):
+    text = re.sub(r"\[CQ:[^\]]*\]", "", text)
+    return re.sub(r"^\s*@哈基米[，,:：\s]*", "", text).strip()
+
+
+def forget_directed(entry):
+    latest = entry["direct_messages"][-1]
+    key = (entry["session_key"], str(latest["user_id"]))
+    if engine.directed_turns.get(key) is entry:
+        engine.directed_turns.pop(key)
+    for source in entry["direct_messages"]:
+        source_key = (*key, str(source["message_id"]))
+        if engine.directed_sources.get(source_key) is entry:
+            engine.directed_sources.pop(source_key)
+
+
+def remember_directed(entry):
+    row = entry["direct_messages"][-1]
+    key = (entry["session_key"], str(row["user_id"]))
+    now = time.time()
+    for _ in range(min(16, len(engine.directed_sources))):
+        stale = next(iter(engine.directed_sources.values()), None)
+        if stale is None or now - stale["direct_messages"][-1]["received_at"] <= 600:
+            break
+        forget_directed(stale)
+    for source in entry["direct_messages"]:
+        source_key = (*key, str(source["message_id"]))
+        engine.directed_sources[source_key] = entry
+        engine.directed_sources.move_to_end(source_key)
+    while len(engine.directed_sources) > 500 * MAX_FOLLOWUP_SOURCES:
+        engine.directed_sources.popitem(last=False)
+    previous = engine.directed_turns.get(key)
+    if previous is not None and previous["direct_messages"][-1]["received_at"] > row["received_at"]:
+        return
+    engine.directed_turns[key] = entry
+    engine.directed_turns.move_to_end(key)
+    while len(engine.directed_turns) > 500:
+        engine.directed_turns.popitem(last=False)
+
+
+def directed_active(state):
+    return (state.get("status") in ("queued", "primary_active", "fallback_active")
+            and not state.get("reply_id") and not state.get("reply_intent"))
+
+
+def restore_directed_turns(coordinator):
+    for lane in coordinator.lane_ids():
+        state = coordinator.for_lane(lane).snapshot()
+        if not directed_active(state):
+            continue
+        payload = state.get("payload", {})
+        ids = [str(mid) for mid in payload.get("pending_explicit_question_ids", ())]
+        session = payload.get("session_key")
+        if not session or not ids or not payload.get("wake_mode", "").startswith("即时唤醒"):
+            continue
+        by_id = {str(row.get("message_id")): row for row in payload.get("recent_context_messages", ())
+                 if row.get("session_key") == session and type(row.get("received_at")) in (int, float)}
+        anchors = [by_id[mid] for mid in ids if mid in by_id]
+        if (len(anchors) == len(ids) and len({row.get("user_id") for row in anchors}) == 1
+                and str(anchors[-1].get("message_id")) == str(payload.get("reply_target_message_id"))):
+            remember_directed({"session_key": session, "direct_messages": anchors,
+                               "trigger_id": state["trigger_id"], "conversation_lane": lane})
+
+
+def unanswered_directed(session_key, user_id, cfg, source_id=None):
+    table = engine.directed_sources if source_id else engine.directed_turns
+    key = (session_key, user_id, source_id) if source_id else (session_key, user_id)
+    pending = table.get(key)
+    if pending is None:
+        return None
+    if pending.get("trigger_id"):
+        coordinator = coordinator_for(BASE_DIR, cfg)
+        state = coordinator.for_lane(pending["conversation_lane"]).snapshot()
+        active = state.get("trigger_id") == pending["trigger_id"] and directed_active(state)
+    else:
+        active = any(item is pending for item in engine.trigger_queue)
+    if not active or time.time() - pending["direct_messages"][-1]["received_at"] > 600:
+        forget_directed(pending)
+        # Supersession can leave an old alias until the current lookup.
+        table.pop(key, None)
+        return None
+    return pending
+
+
+def enqueue_directed(session_key, row, score, reasons, cfg, prior=None):
+    """Keep independent directed turns queued and append a follow-up to its source."""
+    if prior is not None and not prior.get("trigger_id"):
+        prior["direct_messages"].append(dict(row))
+        prior.pop("mention_review", None)
+        prior["score"] = max(prior["score"], score)
+        prior["reasons"] = list(dict.fromkeys(prior["reasons"] + reasons))[-6:]
+        remember_directed(prior)
+        flush_trigger_queue_if_waiting()
+        return
+
+    entry = {
+        "session_key": session_key,
+        "mode": "即时唤醒(被@/私聊)",
+        "score": score,
+        "reasons": reasons,
+        "group_theme_info": None,
+        "direct_messages": [dict(row)],
+        "directed_turn": True,
+    }
+    if prior is not None:
+        entry["replace_trigger_id"] = prior["trigger_id"]
+        entry["prior_source_count"] = len(prior["direct_messages"])
+        entry["direct_messages"] = prior["direct_messages"] + entry["direct_messages"]
+    engine.clear_study_attention(session_key)
+    # Keep same-session directed entries in arrival order ahead of autonomous wakes.
+    position = next((index for index, queued in enumerate(engine.trigger_queue)
+                     if queued["session_key"] == session_key and not queued.get("directed_turn")), None)
+    if position is not None:
+        engine.trigger_queue.remove(engine.trigger_queue[position])
+    position = next((index for index, queued in enumerate(reversed(engine.trigger_queue))
+                     if queued.get("directed_turn") and queued["session_key"] == session_key), None)
+    engine.trigger_queue.insert(0 if position is None else len(engine.trigger_queue) - position, entry)
+    remember_directed(entry)
+    _prewarm_mention_context(entry, cfg)
+    from hakimi.bridge.message_lifecycle import entry as audit_entry
+    audit_entry(BASE_DIR, entry, 'queued_local')
+    flush_trigger_queue_if_waiting(entry if prior is not None else None)
+
+
 def enqueue_wake_beacon(session_key: str, mode: str, score: float, reasons: list[str], cfg: dict, group_theme_info: dict | None = None, continuation_selection=None):
     """将唤醒请求加入优先级队列（被@即时唤醒优先插队，同群去重合并）"""
     is_instant = "即时唤醒" in mode
@@ -895,6 +1022,10 @@ def enqueue_wake_beacon(session_key: str, mode: str, score: float, reasons: list
         engine.clear_study_attention(session_key)
     # 检查队列中是否已有同一 session_key 的待处理项
     for item in list(engine.trigger_queue):
+        if item.get("directed_turn"):
+            if item["session_key"] == session_key:
+                return
+            continue
         if item["session_key"] == session_key:
             if is_instant and "即时唤醒" not in item["mode"]:
                 item["mode"] = mode
@@ -940,12 +1071,18 @@ def _mention_inputs(entry, cfg, now):
     rows = [row for row in engine.context_windows.get(session_key, [])
             if not ignored(row.get('user_id'), BASE_DIR, cfg, session=session_key)
             and not ignored_text(row.get('text', ''), cfg)]
-    anchors = [row for row in entry.get("direct_messages", [])[-3:]
+    anchors = [row for row in entry.get("direct_messages", [])
                if row.get("session_key") == session_key
                and not ignored(row.get('user_id'), BASE_DIR, cfg, session=session_key)
                and not ignored_text(row.get('text', ''), cfg)
                and type(row.get("received_at")) in (int, float)
                and 0 <= now-row["received_at"] <= 600]
+    if entry.get("directed_turn"):
+        # Later ambient context is useful, but a queued independent question has its own reply.
+        other_questions = {str(row["message_id"]) for queued in engine.trigger_queue
+                           if queued is not entry and queued["session_key"] == session_key
+                           for row in queued.get("direct_messages", ())}
+        rows = [row for row in rows if str(row.get("message_id")) not in other_questions]
     if anchors:
         recent_ids = {str(row.get("message_id")) for row in rows}
         missing = [row for row in anchors if str(row.get("message_id")) not in recent_ids]
@@ -960,7 +1097,7 @@ def _prewarm_mention_context(entry, cfg):
     session_key = entry["session_key"]
     if not session_key.startswith('group:') or not entry["mode"].startswith('即时唤醒'):
         return
-    if entry.get("mention_review") is not None:
+    if entry.get("mention_review") is not None or len(entry.get("direct_messages", ())) > 1:
         return
     rows, anchors = _mention_inputs(entry, cfg, time.time())
     if anchors:
@@ -983,22 +1120,26 @@ def delivery_in_progress():
         return True
 
 
-def flush_trigger_queue_if_waiting():
+def flush_trigger_queue_if_waiting(entry=None):
     """Publish one durable turn; primary gets first chance, dsh can recover it."""
     global LAST_WAKE_WAS_PROACTIVE
     if not engine.trigger_queue:
         return
     cfg = load_config()
-    if not WAITING_FLAG.exists() and not cfg.get("fallback", {}).get("enabled", False):
+    if entry is None:
+        entry = next((item for item in engine.trigger_queue if item.get("replace_trigger_id")),
+                     engine.trigger_queue[0])
+    replace_trigger_id = entry.get("replace_trigger_id")
+    if not replace_trigger_id and not WAITING_FLAG.exists() and not cfg.get("fallback", {}).get("enabled", False):
         return
     coordinator = coordinator_for(BASE_DIR, cfg)
-    entry = engine.trigger_queue[0]
     from hakimi.bridge.message_lifecycle import entry as audit_entry
     session_key = entry["session_key"]
     mode = entry["mode"]
     reply_lane = engine.conversation_scheduler.group(session_key).reply_lane
     probe = {'session_key': session_key, 'wake_mode': mode, 'conversation_lane': reply_lane}
-    if coordinator.available_lane(probe) is None or (delivery_in_progress() and not mode.startswith('即时唤醒')):
+    if not replace_trigger_id and (coordinator.available_lane(probe) is None
+            or (delivery_in_progress() and not mode.startswith('即时唤醒'))):
         return
     score = entry["score"]
     reasons = entry["reasons"]
@@ -1007,9 +1148,15 @@ def flush_trigger_queue_if_waiting():
     now = time.time()
     if not session_is_allowed(session_key, cfg):
         audit_entry(BASE_DIR,entry,'cancelled',reason='session_not_allowed')
-        engine.trigger_queue.popleft()
+        engine.trigger_queue.remove(entry)
         return
-    if mode.startswith("即时唤醒") and adaptive_enabled(cfg):
+    if entry.get("directed_turn"):
+        if not replace_trigger_id and session_key.startswith("group:") and adaptive_enabled(cfg):
+            delay = engine.conversation_scheduler._setting(
+                cfg.get("conversation_scheduler", {}), "mention_buffer_seconds", 1, 0, 1)
+            if now < entry["direct_messages"][0]["received_at"] + delay:
+                return
+    elif mode.startswith("即时唤醒") and adaptive_enabled(cfg):
         decision = engine.conversation_scheduler.decide(session_key, cfg, now)
         if decision.mode == "mention" and not decision.ready:
             return
@@ -1017,18 +1164,18 @@ def flush_trigger_queue_if_waiting():
     if not mode.startswith("即时唤醒") and (not can_autonomous(BASE_DIR, session_key)
             or engine.conversation_scheduler.group(session_key).cooldown_until > now):
         audit_entry(BASE_DIR,entry,'cancelled',reason='autonomous_unavailable')
-        engine.trigger_queue.popleft()
+        engine.trigger_queue.remove(entry)
         return
     if mode==COLD_MODE and cold_store(str(BASE_DIR)).due(cfg,now)!=session_key:
         audit_entry(BASE_DIR,entry,'cancelled',reason='cold_opportunity_expired')
-        engine.trigger_queue.popleft()
+        engine.trigger_queue.remove(entry)
         return
     adaptive_turn = mode in ("上下文积累判断", "相关话题续聊", "被@后监听窗口")
     if adaptive_turn:
         decision = engine.conversation_scheduler.decide(session_key, cfg, now)
         if not adaptive_enabled(cfg) or not decision.ready:
             audit_entry(BASE_DIR,entry,'cancelled',reason='decision_not_ready')
-            engine.trigger_queue.popleft()
+            engine.trigger_queue.remove(entry)
             return
         mode = "即时唤醒(被@/私聊)" if decision.mode == "mention" else (
             "被@后监听窗口" if decision.mode == "listening" else "相关话题续聊" if decision.mode == "continuation" else "上下文积累判断")
@@ -1040,7 +1187,7 @@ def flush_trigger_queue_if_waiting():
                     or selection.get('listen_trigger_id') != state.listen_trigger_id
                     or now > state.listen_due):
                 audit_entry(BASE_DIR,entry,'cancelled',reason='window_expired')
-                engine.trigger_queue.popleft()
+                engine.trigger_queue.remove(entry)
                 engine.clear_unread(session_key, through=selection['through'])
                 engine.conversation_scheduler.reject_window_batch(session_key, selection['through'], now)
                 return
@@ -1063,7 +1210,7 @@ def flush_trigger_queue_if_waiting():
         adjusted = group_initiative_score(session_key, max(score, baseline), social)
         if adjusted < baseline:
             audit_entry(BASE_DIR,entry,'cancelled',reason='participation_score_low')
-            engine.trigger_queue.popleft()
+            engine.trigger_queue.remove(entry)
             return
         score = adjusted
     from hakimi.bridge.reply_format import group_reply_rules
@@ -1076,7 +1223,7 @@ def flush_trigger_queue_if_waiting():
                 store.offered(session_key, skipped, now)
                 store.progress({'trigger_id': skipped, 'status': 'completed', 'outcome': 'no_reply'}, now)
             audit_entry(BASE_DIR,entry,'cancelled',reason='participation_probability')
-            engine.trigger_queue.popleft()
+            engine.trigger_queue.remove(entry)
             engine.clear_unread(session_key)
             return
     if mode == "低频尝试参与":
@@ -1089,7 +1236,7 @@ def flush_trigger_queue_if_waiting():
                 or not study_reply_allowed(session_key, now, cfg, BASE_DIR,
                                            engine.last_replied_at.get(session_key, 0))):
             audit_entry(BASE_DIR,entry,'cancelled',reason='exploration_expired')
-            engine.trigger_queue.popleft()
+            engine.trigger_queue.remove(entry)
             print(f"   [低频机会过期] {session_key} 已无新鲜未读消息或正在冷却，保持静默")
             return
         # Reserve only when actually dispatching. If publish temporarily refuses,
@@ -1097,7 +1244,7 @@ def flush_trigger_queue_if_waiting():
         if "exploration_reserved_at" not in entry:
             if not reserve_exploration(session_key, last_human_at, now, cfg, BASE_DIR):
                 audit_entry(BASE_DIR,entry,'cancelled',reason='exploration_budget')
-                engine.trigger_queue.popleft()
+                engine.trigger_queue.remove(entry)
                 print(f"   [低频机会取消] {session_key} 本轮探索额度不可用，保持静默")
                 return
             entry["exploration_reserved_at"] = now
@@ -1107,7 +1254,12 @@ def flush_trigger_queue_if_waiting():
 
     kind, target_id = session_key.split(":", 1)
     recent_msgs, anchors = _mention_inputs(entry, cfg, now)
-    if session_key.startswith('group:') and mode.startswith('即时唤醒') and anchors:
+    if entry.get("directed_turn") and len(anchors) != len(entry["direct_messages"]):
+        audit_entry(BASE_DIR,entry,'cancelled',reason='invalid_directed_sources')
+        engine.trigger_queue.remove(entry)
+        return
+    if (session_key.startswith('group:') and mode.startswith('即时唤醒') and anchors
+            and (not entry.get("directed_turn") or len(anchors) == 1)):
         from hakimi.bridge.conversation_judge import mention_context
         state=engine.conversation_scheduler.group(session_key)
         reviewed=mention_context(entry,recent_msgs,anchors,BASE_DIR,
@@ -1140,7 +1292,15 @@ def flush_trigger_queue_if_waiting():
     recent_msgs, last_msg = select_context({"session_key": session_key,
         "recent_context_messages": recent_msgs,
         "listening_window": listening,
-        "pending_explicit_question_ids": [str(row["message_id"]) for row in anchors]})
+        "pending_explicit_question_ids": [str(row["message_id"]) for row in anchors],
+        "reply_target_message_id": str(anchors[-1]["message_id"]) if anchors else ""})
+    if anchors:
+        # Preserve full source rows even if context review or trimming dropped one.
+        anchor_rows = {str(row["message_id"]): row for row in anchors}
+        last_msg = anchors[-1]
+        recent_msgs = [row for row in recent_msgs if str(row.get("message_id")) not in anchor_rows]
+        recent_msgs.extend(anchor_rows.values())
+        recent_msgs.sort(key=lambda row: row.get("received_at", 0))
     from hakimi.bridge.image_initiative import image_candidates, decide as roll_image
     if adaptive_enabled(cfg):
         pending_ids = {r[2] for r in engine.conversation_scheduler.group(session_key).pending}
@@ -1166,12 +1326,12 @@ def flush_trigger_queue_if_waiting():
                 pass
         if not sample['accepted']:
             audit_entry(BASE_DIR,entry,'cancelled',reason='image_probability')
-            engine.trigger_queue.popleft()
+            engine.trigger_queue.remove(entry)
             engine.clear_unread(session_key)
             return
     if selection is not None and not any(row.get("user_id") != "SELF" for row in recent_msgs):
         audit_entry(BASE_DIR,entry,'cancelled',reason='empty_selection')
-        engine.trigger_queue.popleft()
+        engine.trigger_queue.remove(entry)
         return
     uid = str(last_msg.get("user_id", ""))
     u_info = cfg["user_bias"].get("users", {}).get(uid, {
@@ -1209,14 +1369,29 @@ def flush_trigger_queue_if_waiting():
             pass
     if anchors:
         trigger_payload["pending_explicit_question_ids"] = [str(row["message_id"]) for row in anchors]
+        if entry.get("directed_turn") and len(anchors) > 1:
+            trigger_payload["merged_followup"] = True
     if listening:
         trigger_payload["listening_window"] = listening
     if mode in ('被@后监听窗口', '相关话题续聊'):
         trigger_payload['conversation_lane'] = reply_lane
-    published = coordinator.publish(trigger_payload)
+    published = (coordinator.publish(trigger_payload, replace_trigger_id=replace_trigger_id)
+                 if replace_trigger_id else coordinator.publish(trigger_payload))
     if not published["accepted"]:
+        if replace_trigger_id and published.get("reason") in ("replacement_unavailable", "source_already_answered"):
+            # The previous reply committed during ingestion. Answer the new message
+            # through the ordinary queue, with the older messages as context.
+            entry.pop("replace_trigger_id")
+            old_count = entry.pop("prior_source_count")
+            for row in entry["direct_messages"][:old_count]:
+                key = (session_key, str(row["user_id"]), str(row["message_id"]))
+                if engine.directed_sources.get(key) is entry:
+                    engine.directed_sources.pop(key)
+            entry["direct_messages"] = entry["direct_messages"][old_count:]
+            engine.study_schedule_event.set()
+            return
         if published.get('reason') == 'source_already_answered':
-            engine.trigger_queue.popleft()
+            engine.trigger_queue.remove(entry)
             through = selection['through'] if selection is not None else last_msg.get('received_at')
             if through is not None:
                 if selection is not None:
@@ -1225,7 +1400,7 @@ def flush_trigger_queue_if_waiting():
                     engine.conversation_scheduler.consume(session_key, through=through)
             return
         if published.get('reason') == 'user_reply_limit':
-            engine.trigger_queue.popleft()
+            engine.trigger_queue.remove(entry)
             engine.clear_unread(session_key)
             engine.conversation_scheduler.stop_listening(session_key)
         return
@@ -1243,13 +1418,20 @@ def flush_trigger_queue_if_waiting():
     window_state.window_messages.extend(dict(row) for row in engine.context_windows.get(session_key, ())
         if row.get("user_id") != "SELF" and row.get("received_at", 0) > window_state.context_high_water
         and str(row.get("message_id", "")) not in known)
-    engine.trigger_queue.popleft()
+    engine.trigger_queue.remove(entry)
+    if entry.get("directed_turn"):
+        entry["trigger_id"] = published["trigger_id"]
+        entry["conversation_lane"] = published["conversation_lane"]
+        remember_directed({key: entry[key] for key in
+                           ("session_key", "direct_messages", "trigger_id", "conversation_lane")})
     trigger_payload["trigger_id"] = published["trigger_id"]
     temp = PENDING_TRIGGER.with_suffix(".tmp")
     temp.write_text(json.dumps(trigger_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     temp.replace(PENDING_TRIGGER)
     consumed_through = selection["through"] if selection is not None else max([0, *[float(row.get("received_at", 0)) for row in recent_msgs if row.get("user_id") != "SELF"]])
-    if entry.get('mention_review'):
+    if entry.get("directed_turn"):
+        consumed_through = anchors[-1]["received_at"]
+    elif entry.get('mention_review'):
         consumed_through=max(consumed_through,entry['mention_review']['through'])
     engine.clear_unread(session_key, through=consumed_through)
     print(f"   🚀 [信标已派发给 Flash] -> {session_key} ({mode}, 剩余排队: {len(engine.trigger_queue)})")
@@ -1333,6 +1515,21 @@ async def process_incoming_event(event: dict):
     raw_text = event.get("raw_message", "").strip()
     from hakimi.bridge.interaction_policy import ignored_text
     if ignored_text(raw_text,cfg):return
+    addressed = direct_attention(event, cfg)
+    prior = None
+    if (session_key, user_id) in engine.directed_turns or "[CQ:reply," in raw_text:
+        # A directed quote can identify an older unanswered turn from this author.
+        targets = re.findall(r"\[CQ:at,qq=([^,\]]+)\]", raw_text)
+        reference = re.search(r"\[CQ:reply,id=(-?\d+)\]", raw_text)
+        if not any(target != self_id for target in targets):
+            if reference:
+                prior = unanswered_directed(session_key, user_id, cfg, source_id=reference[1])
+                quoted = engine.msg_lookup.get(reference[1], {})
+                if (prior is None and quoted.get("session_key") == session_key
+                        and quoted.get("user_id") in ("SELF", self_id)):
+                    prior = unanswered_directed(session_key, user_id, cfg)
+            elif addressed or not targets:
+                prior = unanswered_directed(session_key, user_id, cfg)
     # Image downloads / get_msg may take seconds; do not block WS acknowledgements.
     image_paths = []
     cleaned = await asyncio.to_thread(
@@ -1359,13 +1556,14 @@ async def process_incoming_event(event: dict):
     memory_nodes=[]
     state=engine.conversation_scheduler.groups.get(session_key)
     if (state and state.last_reply and 0<=time.time()-state.last_reply<=300
-            and not state.listen_round and not direct_attention(event,cfg)):
+            and not state.listen_round and not addressed):
         try:
             from hakimi.memory.memory_store import store
             memory_nodes=await asyncio.to_thread(store(str(BASE_DIR)).topic_signature,session_key,cleaned)
         except (OSError,sqlite3.Error):
             pass
-    instant_wake, reasons, clean_text = engine.record_and_score(event, cfg, cleaned, image_paths,memory_nodes)
+    instant_wake, reasons, clean_text = engine.record_and_score(
+        event, cfg, cleaned, image_paths, memory_nodes, addressed=addressed)
     if not clean_text and not instant_wake and reasons:
         return
     if cold_settings(cfg).get('enable',False):
@@ -1405,7 +1603,33 @@ async def process_incoming_event(event: dict):
     score = engine.window_interest_score.get(session_key, 0.0)
     print(f"[{time.strftime('%H:%M:%S')}] {session_key} (未读:{unread} 兴趣:{score:.2f}) | 消息:{message_id} 文本:{len(clean_text or raw_text)}字 图片:{len(image_paths)}")
 
-    if instant_wake and (not event.get('_voice_done') or time.time()-event['_voice_received_at']<=210):
+    row = engine.msg_lookup.get(str(message_id)) if message_id is not None else None
+    followup = False
+    independent_question = False
+    semantic_text = followup_text(event.get("_voice_semantic") or raw_text) if prior is not None else ""
+    if (prior is not None and row and row["session_key"] == session_key and clean_text
+            and row["received_at"] >= prior["direct_messages"][-1]["received_at"]
+            and cfg.get("lurker_schedule", {}).get("instant_wake_on_at_or_private", True)):
+        from hakimi.bridge.bot_registry import cooling
+        from hakimi.core.owner import local_terms
+        if not (cooling(BASE_DIR, user_id) or user_id in local_terms("no_instant_wake_ids")):
+            from hakimi.bridge.followup_native import is_continuation
+            previous = "\n".join(source.get("followup_text", followup_text(source["text"]))
+                                 for source in prior["direct_messages"])
+            followup = is_continuation(previous, semantic_text)
+            independent_question = bool(re.match(
+                r"^(?:另外(?:问|再问|还想问)|还有个问题|换个问题|顺便问|你(?:能|可以|知道|觉得)|帮我|哈基米)"
+                r"[，,:：\s]*.*[?？]$", semantic_text, re.DOTALL))
+    if (row and (instant_wake and addressed or followup or independent_question)
+            and (not event.get('_voice_done') or time.time()-event['_voice_received_at']<=210)):
+        # The raw semantic text excludes CQ wrappers and expanded quotes. Keep
+        # voice transcripts in the existing voice store.
+        if not event.get("_voice_ref"):
+            row = dict(row, followup_text=followup_text(raw_text))
+        if not followup or len(prior["direct_messages"]) >= MAX_FOLLOWUP_SOURCES:
+            prior = None
+        enqueue_directed(session_key, row, score, reasons, cfg, prior)
+    elif instant_wake and addressed and row is None:
         enqueue_wake_beacon(session_key, "即时唤醒(被@/私聊)", score, reasons, cfg)
     else:
         received_at = RECENT_EVENT_IDS.get((session_key, str(message_id)), time.time())
@@ -2117,6 +2341,7 @@ async def main():
         except (OSError, ValueError, KeyError, TypeError):
             print("[旧信标未恢复] 缺少可验证的有效时间；未自动发送")
 
+    restore_directed_turns(coordinator)
     if adaptive_enabled(cfg):
         engine.conversation_scheduler.restore(BASE_DIR, time.time())
         engine.restore_listening_unread()

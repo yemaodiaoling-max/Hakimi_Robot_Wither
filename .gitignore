@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 *.egg-info/
+src/hakimi/bridge/_followup_rules*.so
+src/hakimi/bridge/_followup_rules*.pyd
 build/
 dist/
 .venv/

@@ -52,7 +52,8 @@ def select_context(data, limit=12):
     if not rows:
         return [], {}
     directed = data.get("pending_explicit_question_ids", [])
-    directed = [str(mid) for mid in directed[:3]] if isinstance(directed, list) else []
+    direct_limit = max(1, limit) if data.get("merged_followup") else 3
+    directed = [str(mid) for mid in directed[:direct_limit]] if isinstance(directed, list) else []
     targets = [str(data.get("reply_target_message_id", ""))] + directed[::-1]
     anchor = next((i for mid in targets if mid for i, row in enumerate(rows)
                    if str(row.get("message_id", "")) == mid), None)

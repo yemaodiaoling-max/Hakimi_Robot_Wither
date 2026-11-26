@@ -219,6 +219,10 @@ def build_context(data, base=BASE_DIR, now=None, *, self_history_snapshot=None):
     images=allowed_images_for_session(session,base,now)[-8:]
     messages, target = select_context(data)
     selected_messages = messages
+    followups = []
+    if data.get('merged_followup'):
+        ids = {str(mid) for mid in data.get('pending_explicit_question_ids', ())}
+        followups = [row for row in messages if str(row.get('message_id')) in ids]
     rolling_state = {}
     try:
         from hakimi.memory.rolling_context import advance_rolling_window
@@ -232,6 +236,12 @@ def build_context(data, base=BASE_DIR, now=None, *, self_history_snapshot=None):
             Path(base), session, data.get("recent_context_messages", []),
             selected_messages, target, store=store_inst, now=now, limit=12
         )
+        if followups:
+            present = {str(row.get('message_id')) for row in messages}
+            missing = [row for row in followups if str(row.get('message_id')) not in present]
+            if missing:
+                from hakimi.core.context_window import chronological_rows
+                messages = chronological_rows([*messages, *missing])
         selected_messages = messages
     except Exception:
         rolling_state = {}
@@ -335,6 +345,8 @@ def build_context(data, base=BASE_DIR, now=None, *, self_history_snapshot=None):
     if diary_notes:context['own_diary_memory']=diary_notes
     if protected:
         context["pending_explicit_question_ids"] = sorted(protected)
+    if len(followups) > 1:
+        context["followup_guidance"] = "同一位用户连续补充了同一个请求。按时间顺序合起来回答一次，用户后来的更正优先。"
     feeding = feeding_context(session, original_messages, target, base)
     if feeding:
         context["feeding"] = feeding

@@ -55,6 +55,8 @@ _OFFLINE = re.compile(r'(?:别|不要|不用|禁止|不许|无需|勿)[^，,。�
                       r'|(?:不联网|离线)(?:画|创作|生成)|\boffline only\b'
                       r"|\b(?:do not|don't|no need to)\s+(?:use|go on|connect to)\s+(?:the\s+)?(?:internet|online)", re.I)
 _DRAW_INSTEAD = re.compile(r'(?:别|不要|不用)(?:搜|找).{0,8}(?:图|照片)[，,。！!\s]*(?:你)?(?:自己|直接)画')
+_MERGED_CANCEL = re.compile(
+    r'^(?:这(?:张|幅)(?:图|画)\s*)?(?:不画了|不出图了|不生成(?:图片|图)了|取消(?:了|吧)?|不用了)[。！!\s]*$')
 
 
 def _plain(text):
@@ -119,6 +121,59 @@ def _previous_request(rows, index, user, target, session):
     return _kind(previous.get('text')) == 'request' or bool(_ART_SUBJECT.fullmatch(_plain(previous.get('text'))))
 
 
+def _merged_sources(payload, session):
+    """Use only the explicit source chain stored on a bridge follow-up."""
+    ids = payload.get('pending_explicit_question_ids')
+    context = payload.get('recent_context_messages')
+    if (payload.get('wake_mode') != '即时唤醒(被@/私聊)' or payload.get('listening_window')
+            or not isinstance(ids, list) or not 2 <= len(ids) <= 12
+            or not isinstance(context, list) or not isinstance(session, str)):
+        return []
+    ids = [str(mid) for mid in ids]
+    if (ids[-1] != str(payload.get('reply_target_message_id')) or len(set(ids)) != len(ids)
+            or any(not re.fullmatch(r'-?[0-9]{1,20}', mid) for mid in ids)):
+        return []
+    selected = set(ids)
+    sources = {}
+    for row in context:
+        if not isinstance(row, dict) or row.get('session_key') != session:
+            continue
+        mid = str(row.get('message_id'))
+        if mid not in selected:
+            continue
+        if mid in sources:
+            return []
+        sources[mid] = row
+    if set(sources) != selected:
+        return []
+    rows = [sources[mid] for mid in ids]
+    author = str(rows[-1].get('user_id', ''))
+    if (not re.fullmatch(r'[1-9][0-9]{0,19}', author)
+            or (session.startswith('private:') and session != f'private:{author}')
+            or any(str(row.get('user_id')) != author or str(row.get('self_id')) == author for row in rows)):
+        return []
+    return rows
+
+
+def _merged_request(rows):
+    request = None
+    for row in rows:
+        text = row.get('text')
+        kind = _kind(text)
+        if kind == 'cancel' or _MERGED_CANCEL.fullmatch(_plain(text)):
+            request = None
+        elif request is None and (
+            kind == 'request' or (
+                kind == 'followup' and row.get('image_paths')
+                and re.search(r'(?:就画这个|按这个(?:风格|构图)?画)', _plain(text))
+            )
+        ):
+            # Keep the first request ID until cancellation so retries and
+            # overlapping workers share the same durable drawing receipt.
+            request = row
+    return request
+
+
 def requested(payload):
     """Return the authoritative request row, or None. History grants no authority."""
     if (isinstance(payload.get('internal_review'), dict) or payload.get('internal_review')
@@ -128,6 +183,8 @@ def requested(payload):
     session = payload.get('session_key')
     if not isinstance(session, str) or not re.fullmatch(r'(?:group|private):[1-9][0-9]{0,19}', session):
         return None
+    if payload.get('merged_followup') is True:
+        return _merged_request(_merged_sources(payload, session))
     _, target = select_context(payload)
     user = str(target.get('user_id', ''))
     message = str(target.get('message_id', ''))
@@ -174,5 +231,10 @@ def offered(payload, base):
 
 
 def allows_generation(payload, target):
-    return (payload.get('allow_network') is not False and payload.get('network_allowed') is not False
-            and not _OFFLINE.search(_QUOTED.sub(' ', _plain(target.get('text')))))
+    if payload.get('allow_network') is False or payload.get('network_allowed') is False:
+        return False
+    if payload.get('merged_followup') is True:
+        rows = _merged_sources(payload, payload.get('session_key', ''))
+        return bool(rows) and not any(
+            _OFFLINE.search(_QUOTED.sub(' ', _plain(row.get('text')))) for row in rows)
+    return not _OFFLINE.search(_QUOTED.sub(' ', _plain(target.get('text'))))

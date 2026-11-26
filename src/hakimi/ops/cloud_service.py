@@ -237,8 +237,12 @@ def _agent_lane():
             from hakimi.models.search_routing import prepare as prepare_search
             claim['payload']['_web_context'] = prepare_search(claim['payload'],RUNTIME,timeout=min(12,max(.1,claim['deadline']-time.time()-10)))
             prompt=render_prompt(claim['payload'],RUNTIME,claim,cli_label=command,wait_after_turn=False,native=bool(routing),selected_model=selected_model)
+            if not review and coordinator.was_superseded(claim['trigger_id']):
+                continue
             activate_context(claim['payload'],RUNTIME,claim=claim)
             result=generate(prompt,coordinator,claim)
+            if not review and coordinator.was_superseded(claim['trigger_id']):
+                continue
             reason=_failure_reason(result,vertex)
             if review:
                 # A reflection is silent background work.  Never leave it as
@@ -260,6 +264,8 @@ def _agent_lane():
                 if result.get('status')!='SUCCESS':backoff=60
                 else:consecutive_failures = 0
         except vertex_route.VertexRouteError as exc:
+            if not review and coordinator.was_superseded(claim['trigger_id']):
+                continue
             reason='vertex_budget' if exc.code=='vertex_budget' else 'gateway_unavailable'
             if review:
                 completion=_finish_review(coordinator,claim,RUNTIME,success=False)
@@ -271,6 +277,8 @@ def _agent_lane():
                 log(component='gemini',error=reason,usage=getattr(exc,'usage',{}))
                 backoff=60 if reason=='gateway_unavailable' else 10
         except Exception as exc:
+            if not review and coordinator.was_superseded(claim['trigger_id']):
+                continue
             detail = getattr(exc, 'carbon_failure', {})
             reason = ('antigravity_unavailable' if (routing or {}).get('provider') == 'antigravity'
                       else detail.get('code') or ('gateway_unavailable' if vertex else 'model_error'))
@@ -282,7 +290,7 @@ def _agent_lane():
                 _close_session('submission_missing')
                 log(component='gemini',error=type(exc).__name__,failure=detail,usage=getattr(exc,'usage',{}))
                 backoff=60
-        if backoff:
+        if backoff and not coordinator.was_superseded(claim['trigger_id']):
             consecutive_failures += 1
             # One transient failure should not block the next user's turn for a minute.
             # Persistent failures still reach the existing 60-second retry ceiling.

@@ -63,6 +63,45 @@ def _reply_sources(payload):
     return {f'{session}/{mid}' for mid in ids if session and re.fullmatch(r'-?\d{1,20}', str(mid))}
 
 
+def _followup_author(payload, sources):
+    """Resolve every source to one QQ author, rejecting missing or conflicting rows."""
+    session = payload.get('session_key', '')
+    if not isinstance(session, str) or not re.fullmatch(r'(?:group|private):[1-9][0-9]{0,19}', session):
+        return None
+    authors = set()
+    found = set()
+    rows = payload.get('recent_context_messages', [])
+    if not isinstance(rows, list):
+        return None
+    for row in rows:
+        if not isinstance(row, dict) or row.get('session_key', session) != session:
+            continue
+        source = f"{session}/{row.get('message_id')}"
+        if source in sources:
+            found.add(source)
+            authors.add(str(row.get('user_id', '')))
+    if found != sources or len(authors) != 1:
+        return None
+    author = next(iter(authors))
+    if not re.fullmatch(r'[1-9][0-9]{0,19}', author):
+        return None
+    if session.startswith('private:') and session != f'private:{author}':
+        return None
+    return author
+
+
+def _is_followup(old, new, old_sources, sources):
+    session = old.get('session_key')
+    if (not session or session != new.get('session_key')
+            or old.get('wake_mode') != '即时唤醒(被@/私聊)'
+            or new.get('wake_mode') != old.get('wake_mode')
+            or not old_sources or not old_sources < sources
+            or sources - old_sources != {f"{session}/{new.get('reply_target_message_id')}"}):
+        return False
+    author = _followup_author(old, old_sources)
+    return author is not None and author == _followup_author(new, sources)
+
+
 class CoordinatorError(RuntimeError):
     pass
 
@@ -115,7 +154,10 @@ class TurnCoordinator:
         if not trigger_id:
             return False
         hint = self._poll_hint()
-        if hint.get('trigger_id') == trigger_id and hint.get('outcome') == 'superseded':
+        if hint.get('trigger_id') == trigger_id:
+            return hint.get('outcome') == 'superseded'
+        if any(row.get('trigger_id') == trigger_id and row.get('outcome') == 'superseded'
+               for row in hint.get('pending_turn_events', [])):
             return True
         from hakimi.core.jsonio import tail_jsonl
         from hakimi.core.runtime_io import read_derived_cached
@@ -194,9 +236,9 @@ class TurnCoordinator:
         except (OSError, ValueError, TypeError) as exc:
             raise CoordinatorError("turn checkpoint unreadable; manual review required") from exc
 
-    def _save(self, state):
+    def _save(self, state, *, share=True):
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        if self.lane_id:
+        if self.lane_id and share:
             root = self.for_lane('')
             shared = root._read()
             for key in (GROUP_REPLY_HISTORY, user_reply_quota.HISTORY_KEY, 'recent_trigger_ids'):
@@ -453,7 +495,7 @@ class TurnCoordinator:
             os.fsync(stream.fileno())
         atomic_replace(temporary,self.events_path)
 
-    def _flush_turn_events(self, state):
+    def _flush_turn_events(self, state, *, share=True):
         pending = state.get("pending_turn_events", [])
         if not pending:
             return
@@ -462,7 +504,7 @@ class TurnCoordinator:
             state["pending_turn_events"] = []
             if state.get("status") == "completed":
                 state["audit_event_recorded"] = True
-            self._save(state)
+            self._save(state, share=share)
         except Exception:
             # The completed state already durably contains pending metadata.
             # Retry after restart / before the next publish; never retry a reply.
@@ -735,14 +777,49 @@ class TurnCoordinator:
             state["ready_at"] = ready_at
             state["primary_grace_deadline"] = min(ready_at + policy["grace_seconds"], expires_at)
 
-    def publish(self, payload):
+    def publish(self, payload, *, replace_trigger_id=None):
         if not isinstance(payload, dict):raise ValueError('turn payload must be an object')
+        if replace_trigger_id is not None:
+            return self._replace_active(payload, replace_trigger_id)
         lane = self.available_lane(payload)
         if lane is None:return {'accepted': False, 'reason': 'busy', 'status': 'busy'}
         target = self.for_lane(lane)
         result = target._publish_current(dict(payload, conversation_lane=lane))
         if result.get('accepted'):result['conversation_lane'] = lane
         return result
+
+    def _replace_active(self, payload, replace_trigger_id):
+        from hakimi.bridge.turn_lanes import ACTIVE
+
+        rejected = {'accepted': False, 'reason': 'replacement_unavailable'}
+        payload = json.loads(json.dumps(payload, ensure_ascii=False, allow_nan=False))
+        if not isinstance(replace_trigger_id, str) or not replace_trigger_id:
+            return rejected
+        with self._locked():
+            # An interrupted submit still owns the commit. Recover peer intents
+            # before deciding whether this turn can give up its sources.
+            for lane in self.lane_ids():
+                peer = self.for_lane(lane)
+                if peer._read().get('reply_intent'):
+                    peer._load_ready()
+            for lane in self.lane_ids():
+                target = self.for_lane(lane)
+                state = target._read()
+                if state.get('trigger_id') != replace_trigger_id:
+                    continue
+                if (state['status'] not in ACTIVE or state.get('reply_id') or state.get('reply_intent')
+                        or self.clock() >= min(state['expires_at'], target._original_expiry(state),
+                                               state.get('deadline', state['expires_at']))):
+                    return rejected
+                old = state['payload']
+                payload['conversation_lane'] = lane
+                if not _is_followup(old, payload, _reply_sources(old), _reply_sources(payload)):
+                    return rejected
+                result = target._publish_locked(payload, state, replacing=True)
+                if result.get('accepted'):
+                    result.update(conversation_lane=lane, replaced_trigger_id=replace_trigger_id)
+                return result
+        return rejected
 
     def _publish_current(self, payload):
         if not isinstance(payload, dict):
@@ -752,64 +829,100 @@ class TurnCoordinator:
             state = self._load_ready()
             if state["status"] not in {"idle", "completed"}:
                 return {"accepted": False, "status": state["status"], "reason": "busy", "trigger_id": state["trigger_id"]}
-            trigger_id = str(payload.get("trigger_id") or uuid.uuid4().hex)
-            recent = state.get("recent_trigger_ids", [])
-            if trigger_id in recent:
-                return {"accepted": False, "status": state["status"], "reason": "duplicate_trigger", "trigger_id": trigger_id}
-            sources = _reply_sources(payload)
-            if sources:
-                answered = set()
-                for lane in self.lane_ids():
-                    peer = self.for_lane(lane)
-                    prior = state if lane == self.lane_id else peer._poll_hint()
-                    if prior.get('reply_intent'):
-                        prior = peer._load_ready()
-                    answered.update(prior.get('answered_sources', []))
-                    prior_sources = _reply_sources(prior.get('payload', {}))
-                    if prior.get('reply_id'):
-                        answered.update(prior_sources)
-                    elif prior.get('status') in ('queued', 'primary_active', 'fallback_active') and sources <= prior_sources:
-                        return {'accepted': False, 'reason': 'busy'}
-                if sources <= answered:
-                    from hakimi.bridge.message_lifecycle import record
-                    record(self.base_dir, payload, 'cancelled', reason='source_already_answered')
-                    return {'accepted': False, 'reason': 'source_already_answered'}
-            now = self.clock()
-            created_at = payload.get("created_at", now)
-            if (not isinstance(created_at, (int, float)) or isinstance(created_at, bool)
-                    or not math.isfinite(created_at)):
-                raise ValueError("created_at must be a finite epoch timestamp")
-            created_at = min(created_at, now)
-            internal_review = isinstance(payload.get("internal_review"), dict)
-            ttl_seconds = min(self.ttl_seconds, INTERNAL_REVIEW_TTL_SECONDS) if internal_review else self.ttl_seconds
-            if now >= created_at + ttl_seconds:
-                return {"accepted": False, "status": "expired", "reason": "expired", "trigger_id": trigger_id}
-            wait = self._user_reply_wait(state, payload)
-            if wait:
+            return self._publish_locked(payload, state)
+
+    def _publish_locked(self, payload, state, *, replacing=False):
+        supplied_id = payload.get("trigger_id")
+        trigger_id = str(supplied_id or uuid.uuid4().hex)
+        recent = state.get("recent_trigger_ids", [])
+        replacement_ids = state.get('replacement_trigger_ids', [])
+        sources = _reply_sources(payload)
+        siblings = ([self.for_lane(lane) for lane in self.lane_ids() if lane != self.lane_id]
+                    if supplied_id or sources else [])
+        if supplied_id and (
+            trigger_id == state.get('trigger_id') or trigger_id in recent or trigger_id in replacement_ids
+            or any(trigger_id in (peer._read() if replacing else peer._poll_hint()).get(
+                'replacement_trigger_ids', []) for peer in siblings)
+        ):
+            return {"accepted": False, "status": state["status"], "reason": "duplicate_trigger", "trigger_id": trigger_id}
+        if sources:
+            answered = set(state.get('answered_sources', []))
+            for peer in siblings:
+                prior = peer._read() if replacing else peer._poll_hint()
+                if prior.get('reply_intent'):
+                    prior = peer._load_ready()
+                answered.update(prior.get('answered_sources', []))
+                prior_sources = _reply_sources(prior.get('payload', {}))
+                if prior.get('reply_id'):
+                    answered.update(prior_sources)
+                elif (prior.get('status') in ('queued', 'primary_active', 'fallback_active')
+                      and (sources & prior_sources if replacing else sources <= prior_sources)):
+                    return {'accepted': False, 'reason': 'busy'}
+            if not replacing and state.get('reply_id'):
+                answered.update(_reply_sources(state.get('payload', {})))
+            if replacing and sources & answered:
+                return {'accepted': False, 'reason': 'source_already_answered'}
+            if sources <= answered:
                 from hakimi.bridge.message_lifecycle import record
-                record(self.base_dir,payload,'cancelled',reason='user_reply_limit',retry_after=wait)
-                return {'accepted': False, 'status': state['status'],
-                        'reason': user_reply_quota.LIMIT_REASON, 'retry_after': wait,
-                        'trigger_id': trigger_id}
-            payload.update(trigger_id=trigger_id, created_at=created_at)
-            policy = self._primary_timing()
-            pending_events = state.get("pending_turn_events", [])
-            group_history = self.group_quota.prune(
-                state.get(GROUP_REPLY_HISTORY, []), now)
-            state = {"version": 1, "status": "queued", "trigger_id": trigger_id, "payload": payload,
-                     "created_at": created_at, "ready_at": now, "expires_at": created_at + ttl_seconds,
-                     "original_expires_at": created_at + ttl_seconds,
-                     "primary_grace_deadline": min(now + policy["grace_seconds"], created_at + ttl_seconds),
-                     "primary_policy": policy,
-                     "recent_trigger_ids": (recent + [trigger_id])[-1000:],
-                     "answered_sources": state.get('answered_sources', []),
-                     "pending_turn_events": pending_events,
-                     GROUP_REPLY_HISTORY: group_history,
-                     user_reply_quota.HISTORY_KEY: state.get(user_reply_quota.HISTORY_KEY, [])}
-            self._save(state)
+                record(self.base_dir, payload, 'cancelled', reason='source_already_answered')
+                return {'accepted': False, 'reason': 'source_already_answered'}
+        now = self.clock()
+        created_at = payload.get("created_at", now)
+        if (not isinstance(created_at, (int, float)) or isinstance(created_at, bool)
+                or not math.isfinite(created_at)):
+            raise ValueError("created_at must be a finite epoch timestamp")
+        created_at = min(created_at, now)
+        internal_review = isinstance(payload.get("internal_review"), dict)
+        ttl_seconds = min(self.ttl_seconds, INTERNAL_REVIEW_TTL_SECONDS) if internal_review else self.ttl_seconds
+        expires_at = created_at + ttl_seconds
+        if replacing:
+            expires_at = min(expires_at, self._original_expiry(state), state['expires_at'])
+            if now >= state.get('deadline', expires_at):
+                return {'accepted': False, 'reason': 'replacement_unavailable'}
+        if now >= expires_at:
+            return {"accepted": False, "status": "expired", "reason": "expired", "trigger_id": trigger_id}
+        wait = self._user_reply_wait(state, payload)
+        if wait:
             from hakimi.bridge.message_lifecycle import record
-            record(self.base_dir,payload,'published',trigger_id=trigger_id)
-            return {"accepted": True, "status": "queued", "trigger_id": trigger_id}
+            record(self.base_dir,payload,'cancelled',reason='user_reply_limit',retry_after=wait)
+            return {'accepted': False, 'status': state['status'],
+                    'reason': user_reply_quota.LIMIT_REASON, 'retry_after': wait,
+                    'trigger_id': trigger_id}
+        payload.update(trigger_id=trigger_id, created_at=created_at)
+        policy = self._primary_timing()
+        if replacing:
+            now = self.clock()
+            if now >= min(expires_at, state.get('deadline', expires_at)):
+                return {'accepted': False, 'reason': 'replacement_unavailable'}
+            superseded = dict(state, outcome='superseded', completed_at=now)
+            self._queue_turn_event(superseded)
+            pending_events = superseded.get('pending_turn_events', [])
+            replacement_ids = (replacement_ids + [trigger_id])[-1000:]
+        else:
+            pending_events = state.get("pending_turn_events", [])
+        group_history = self.group_quota.prune(
+            state.get(GROUP_REPLY_HISTORY, []), now)
+        state = {"version": 1, "status": "queued", "trigger_id": trigger_id, "payload": payload,
+                 "created_at": created_at, "ready_at": now, "expires_at": expires_at,
+                 "original_expires_at": expires_at,
+                 "primary_grace_deadline": min(now + policy["grace_seconds"], expires_at),
+                 "primary_policy": policy,
+                 "recent_trigger_ids": (recent + [trigger_id])[-1000:],
+                 "replacement_trigger_ids": replacement_ids,
+                 "answered_sources": state.get('answered_sources', []),
+                 "pending_turn_events": pending_events,
+                 GROUP_REPLY_HISTORY: group_history,
+                 user_reply_quota.HISTORY_KEY: state.get(user_reply_quota.HISTORY_KEY, [])}
+        if replacing:
+            # Store cancellation, new owner admission, and trigger ID in one
+            # checkpoint. Shared bookkeeping cannot consume an ID if this fails.
+            self._save(state, share=False)
+            self._flush_turn_events(state, share=False)
+        else:
+            self._save(state)
+        from hakimi.bridge.message_lifecycle import record
+        record(self.base_dir,payload,'published',trigger_id=trigger_id)
+        return {"accepted": True, "status": "queued", "trigger_id": trigger_id}
 
     def _original_expiry(self, state):
         original = self._safe_epoch(state.get("original_expires_at"))

@@ -28,7 +28,7 @@ async def main():
     adapter = OfficialAdapter(base, cfg, api, store)
 
     class SourceCoordinator(TurnCoordinator):
-        def publish(self, payload):
+        def publish(self, payload, *, replace_trigger_id=None):
             messages = payload.get("recent_context_messages", [])
             route = adapter.route_for_session(payload.get("session_key"))
             if not route:
@@ -52,11 +52,17 @@ async def main():
             eligible = [row for row in eligible if row and row["direction"] == "in" and row["group_openid"] == route.get("scope",route["openid"])]
             if not eligible:
                 return {"accepted": False, "reason": "no_official_reply_source"}
-            source = max(eligible, key=lambda row: row["at"])
+            # QQ timestamps can tie. Keep the last clarification as the reply reference.
+            target = str(payload.get("reply_target_message_id", ""))
+            source = next((row for row in eligible if directed and str(row["local_id"]) == target), None)
+            if source is None:
+                if replace_trigger_id is not None:
+                    return {"accepted": False, "reason": "replacement_unavailable"}
+                source = max(eligible, key=lambda row: row["at"])
             # Reserve up to 75s for five paced bubbles inside the 300s window.
             self.ttl_seconds = 600 if cfg.get("allow_proactive") is True and route.get("kind")!="private" else 225
             copied = dict(payload, created_at=source["at"])
-            result = super().publish(copied)
+            result = super().publish(copied, replace_trigger_id=replace_trigger_id)
             if result["accepted"]:
                 store.attach_turn(result["trigger_id"], source["local_id"])
             return result
@@ -90,6 +96,7 @@ async def main():
     bridge.cache_qq_image_to_jpg = cached_image
     bridge.onebot_http_post = lambda *args, **kwargs: {}  # No cross-transport history fallback.
     DeliveryGuard(bridge.DELIVERY_STATE_FILE, bridge.OUTBOX_FILE, bridge.load_config().get("delivery_policy", {}))
+    bridge.restore_directed_turns(official_coordinator(base, bridge.load_config()))
     bridge.engine.conversation_scheduler.restore(base, time.time())
     bridge.engine.restore_listening_unread()
     bridge.engine.restore_recent_study_unread(bridge.load_config(), base=base)
