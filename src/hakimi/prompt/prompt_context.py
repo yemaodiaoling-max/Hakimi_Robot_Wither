@@ -379,7 +379,12 @@ def build_context(data, base=BASE_DIR, now=None, *, self_history_snapshot=None):
             "guidance": "本群近期消息迭代较快。回应某个人或具体问题、需要消歧时，可选择对应的可见消息ID作为reply_to；不要随便挑一个。跨多人总结或无需消歧时仍直接说话。提交时会再次检查。",
         }
     # BILIBILI_AUTOBIOGRAPHY_V2: content recall uses scoped_memory_data; live presence is strictly gated.
-    from hakimi.memory.bili_autobiography import format_qq_bili_presence, should_inject_qq_bili_presence
+    from hakimi.memory.bili_autobiography import (
+        format_qq_bili_presence, regular_live_room_context, should_inject_qq_bili_presence,
+    )
+    room_context = regular_live_room_context(target, paths.persona_overrides() / "regular_live_room.json")
+    if room_context:
+        context["regular_live_room"] = room_context
     if any("B站亲历" in str(m) for m in memory_notes):
         context["bili_experience_hint"] = (
             "scoped_memory_data中的「B站亲历」是你自己在B站看过的视频或直播，聊到对应内容时自然用第一人称想起并按已看时段分享。"

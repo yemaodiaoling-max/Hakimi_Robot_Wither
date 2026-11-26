@@ -399,6 +399,9 @@ class CognitionEngine:
         chat = []
         live_started_at = 0
         if scope.kind == 'live_room':
+            room_note = self.persona.live_room_note(scope.identity)
+            if room_note:
+                instruction += '\n本房间的背景资料（仅辅助辨认，不计作视听证据）：' + room_note
             try:
                 live_started_at = datetime.strptime(chunk.session_id.split(':', 1)[1],
                     '%Y-%m-%d %H:%M:%S').replace(tzinfo=ZoneInfo('Asia/Shanghai')).timestamp()

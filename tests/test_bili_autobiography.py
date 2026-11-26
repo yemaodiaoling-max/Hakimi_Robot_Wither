@@ -38,6 +38,31 @@ class BiliAutobiographyTests(unittest.TestCase):
         (self.base / "state").mkdir(parents=True, exist_ok=True)
         self.now = datetime(2026, 11, 23, 20, 0, tzinfo=diary.ZONE).timestamp()
 
+    def test_regular_live_room_uses_official_id_and_gates_unrelated_chat(self):
+        path = self.base / "regular_live_room.json"
+        def check(text, uid, **fields):
+            return bili_auto.regular_live_room_context(dict(text=text, user_id=uid, **fields), path)
+        self.assertIsNone(check("平时看谁直播", "account-A"))
+        path.write_text(json.dumps(dict(room_id="1234", host_name="测试主播", qq_official_id="account-A",
+                                        observation_note="Test note")), encoding="utf-8")
+        owner = check("我今天开播了", "account-A")
+        self.assertTrue(owner["current_sender_is_room_owner"])
+        self.assertNotIn("account-A", json.dumps(owner))
+        self.assertIsNone(check("我今天开播了", "account-B", nickname="测试主播"))
+        self.assertIsNone(check("明天晚上吃什么", "account-A"))
+        self.assertIsNone(check("12345号房间", "account-B"))
+        self.assertIsNone(check("别人的直播间", "account-B"))
+        self.assertIsNone(check("我每天去别人的直播间", "account-B"))
+        for text in ("1234号房间", "每天去的那个直播间是谁的", "测试主播开播了"):
+            context = check(text, "account-B")
+            self.assertEqual(context["room_owner"], "测试主播")
+            self.assertNotIn("current_sender_is_room_owner", context)
+        data = {"session_key": "group:888", "recent_context_messages": [
+            {"message_id": "a", "user_id": "account-A", "text": "我今天开播了", "received_at": self.now - 1}]}
+        with patch("hakimi.paths.persona_overrides", return_value=self.base):
+            prompt = positive_context(build_context(data, base=self.base, now=self.now))
+        self.assertEqual(prompt["regular_live_room"], owner)
+
     def test_ingest_in_place_revision_and_content_recall(self):
         ep1 = {
             "kind": "video",

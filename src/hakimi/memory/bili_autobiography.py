@@ -253,6 +253,31 @@ def read_bili_presence(
     return best
 
 
+def regular_live_room_context(target, profile_path):
+    """Resolve the private account binding locally; expose only relevant room context."""
+    from hakimi.core.jsonio import read_json
+    profile = read_json(profile_path, {})
+    if not isinstance(profile, dict):
+        return None
+    values = [profile.get(key) for key in ("room_id", "host_name", "qq_official_id", "observation_note")]
+    if not all(isinstance(value, str) and value.strip() for value in values):
+        return None
+    room, name, account, note = values
+    is_host = str(target.get("user_id", "")) == account
+    text = str(target.get("text", ""))
+    named_room = re.search(r"(?<![0-9])" + re.escape(room) + r"(?![0-9])", text)
+    usual_room = re.search(
+        r"(?:每天|天天|平时|经常|常|总)(?:都)?(?:去|看|蹲|守|逛|待|进)"
+        r"(?:的|的是)?(?:哪个|哪家|哪位|谁的?|那个|那家|那场)?(?:[Bb]站的?)?(?:直播|房间)", text)
+    stream_topic = any(word in text for word in ("直播", "开播", "代播", "在播", "房主", "主播"))
+    if named_room or usual_room or (stream_topic and (is_host or name in text)):
+        context = {"room_id": room, "room_owner": name, "background": note}
+        if is_host:
+            context["current_sender_is_room_owner"] = True
+        return context
+    return None
+
+
 def should_inject_qq_bili_presence(text: str, *, admin_turn: bool = False) -> bool:
     """Gate live Bilibili presence injection in QQ turns to save tokens on normal chat."""
     if admin_turn:

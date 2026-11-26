@@ -66,6 +66,29 @@ class CognitionTests(unittest.TestCase):
         engine = CognitionEngine(client,self.ledger,self.memory,clock=lambda:self.now,**kwargs)
         return engine, client
 
+    def test_private_room_identity_is_filtered_in_media_requests(self):
+        from bili_companion.persona import PersonaLoader
+        persona_dir = self.root / "personas"
+        persona_dir.mkdir()
+        for filename in ("hakimi_core.md", "bilibili_overlay.md"):
+            (persona_dir / filename).write_text("fixture", encoding="utf-8")
+        path = self.root / "private" / "persona" / "regular_live_room.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(dict(room_id="room", qq_official_id="private-account",
+                                        observation_note="fixture-room-note")), encoding="utf-8")
+        loader = PersonaLoader(persona_dir)
+        engine, client = self.engine([response(observed(interesting=False)) for _ in range(2)],
+                                     persona_loader=loader)
+        for identity in ("room", "another"):
+            self.chunk.target_id = identity
+            engine.observe(self.chunk, Scope("a", "live_room", identity), 1, allow_decision=False)
+        payloads = [json.dumps(req[1]) for req in client.requests]
+        self.assertEqual(len(payloads), 2)
+        self.assertIn("fixture-room-note", payloads[0])
+        self.assertNotIn("fixture-room-note", payloads[1])
+        self.assertNotIn("private-account", "".join(payloads))
+        self.assertNotIn("fixture-room-note", loader.load().system_instruction)
+
     def test_panel_unattributed_success_retains_debt_without_second_generation(self):
         engine,client=self.engine([response(observed())])
         client.usage_panel_actual_cost=True

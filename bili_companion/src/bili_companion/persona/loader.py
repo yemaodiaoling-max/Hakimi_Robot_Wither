@@ -33,6 +33,18 @@ class PersonaLoader:
         self.max_characters = max_characters
         self.memory_characters = memory_characters
 
+    def live_room_note(self, room_id):
+        """Only the observation note for this room may enter a media request."""
+        path = self.persona_dir.parent / "private" / "persona" / "regular_live_room.json"
+        try:
+            profile = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return ""
+        if not isinstance(profile, dict) or profile.get("room_id") != room_id:
+            return ""
+        note = profile.get("observation_note")
+        return note.strip() if isinstance(note, str) and len(note) <= 1000 else ""
+
     def load(self, bridge_memories: Sequence[Mapping] = ()) -> PersonaBundle:
         core = (self.persona_dir / "hakimi_core.md").read_text(encoding="utf-8").strip()
         overlay = (self.persona_dir / "bilibili_overlay.md").read_text(encoding="utf-8").strip()
