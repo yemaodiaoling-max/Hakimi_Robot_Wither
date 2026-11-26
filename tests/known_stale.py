@@ -20,7 +20,6 @@ REASONS = {
 }
 
 STALE = {
-    "test_cache_prefix.PrefixTests.test_all_existing_data_and_instruction_text_are_preserved": "persona_text",
     "test_memory_v3.PromptHabitTests.test_once_only_opportunity_and_related_ids": "persona_text",
     "test_memory_v3.PromptHabitTests.test_prompt_rules_are_stable_and_do_not_claim_success_without_receipt": "persona_text",
     "test_memory_v4.ToolIntegrationTests.test_prompt_guidance_mentions_social_without_claiming_automation": "persona_text",

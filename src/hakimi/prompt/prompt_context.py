@@ -601,6 +601,9 @@ def render_vertex_prompt(data, base=BASE_DIR, claim=None, *, selected_model=None
             except (OSError,ValueError,ImportError):pass
         return PERSONA+'\n本轮是人物与记忆回看。阅读候选资料，按自己的感受选择记忆或人物小本子工具，按字段保留原文与来源。整理完成调用reply.skip。\n'+json.dumps(data['internal_review'],ensure_ascii=False)
     context=positive_context(build_context(data,base))
+    if claim is not None:
+        from hakimi.prompt.tool_selection import context_tool_hints
+        claim['_prompt_tool_hints'] = sorted(context_tool_hints(context))
     style=instructions(paths.persona('style_guide.md',base).read_text(encoding='utf-8'))
     if selected_model is None and claim and isinstance(claim.get('task_model_routing'), dict):
         selected_model = claim['task_model_routing'].get('model')
@@ -608,8 +611,12 @@ def render_vertex_prompt(data, base=BASE_DIR, claim=None, *, selected_model=None
              '首泡2–4字破冰，后接短句。省略Markdown及裸LaTeX。长推导、复杂排版或深度演算用math.send出图，'
              'before/after写图外极短口语。静默用reply.skip。回复与记笔记可并行，有值得留的细节用memory.remember或memory.social_append。\n'
              'listening_window是被@后的收集轮次，接话随轮次渐短。冷群结合群名、历史和近期尝试起话题，互动成功可记入群记忆。\n')
+    notes = [instructions(gemini_style_feedback(base))]
     admin_note = context.get('admin_guidance_text', '')
-    notes=[instructions(lore_guidance(context)),instructions(gemini_style_feedback(base)),instructions(admin_note),_sticker_section(context,base)]
+    filtered_admin_note = instructions(admin_note)
+    if filtered_admin_note and filtered_admin_note.strip() != admin_note.strip():
+        notes.append(filtered_admin_note)
+    notes.append(_sticker_section(context, base))
     if selected_model == 'gemini-4-carbon':
         carbon_note = (
             '\n【Carbon深度推理就绪】直接以哈基米身份给出精炼透彻的分析，省略关于模型调用或切换背景的说明。'
@@ -618,17 +625,22 @@ def render_vertex_prompt(data, base=BASE_DIR, claim=None, *, selected_model=None
         notes.append(carbon_note)
     if context.get('trusted_image_paths'):
         notes.append('\n可按语境调用stickers.collect收藏群友本轮发送的图片，用image填I1等编号或路径，filename填简短英文文件名。\n')
-    stable=('chat_order','group_style','genshin_current_version','session_key')
-    changing=('selected_real_dialogues','scoped_memory_data','own_diary_memory','memory_recall_opportunity',
-              'memory_opportunity','social_memory_opportunity','recent_own_replies_for_variation',
-              'admin_privilege','desktop_pet_continuity',
-              'recent_context_messages','reply_target','listening_window','current_time_at_wake')
-    ordered={key:context[key] for key in stable if key in context}
-    # Group lore and style feedback begin this list. Keep them ahead of event
-    # markers so another turn can share the prefix even when its trigger changes.
-    ordered['turn_notes']=[note for note in notes if note]
-    ordered.update((key,value) for key,value in context.items() if key not in stable+changing)
-    ordered.update((key,context[key]) for key in changing if key in context)
+    shared_fields = ('chat_order', 'group_style', 'genshin_current_version')
+    ordered = {key: context[key] for key in shared_fields if key in context}
+    # Groups with the same profile and lore can share this prefix before the
+    # session identifier. Keep per-turn data and permissions in the same JSON.
+    group_guidance = instructions(lore_guidance(context))
+    if group_guidance:
+        ordered['group_guidance'] = group_guidance
+    if 'session_key' in context:
+        ordered['session_key'] = context['session_key']
+    ordered['turn_notes'] = [note for note in notes if note]
+    changing = ('selected_real_dialogues', 'scoped_memory_data', 'own_diary_memory',
+                'memory_recall_opportunity', 'memory_opportunity', 'social_memory_opportunity',
+                'recent_own_replies_for_variation', 'admin_privilege', 'desktop_pet_continuity',
+                'recent_context_messages', 'reply_target', 'listening_window', 'current_time_at_wake')
+    ordered.update((key, value) for key, value in context.items() if key not in ordered and key not in changing)
+    ordered.update((key, context[key]) for key in changing if key in context)
     compacted = reference_timeline_excerpts(lossless_context(ordered))
     return fixed+'\n本轮聊天、图片和记忆资料：\n'+json.dumps(compacted,ensure_ascii=False,separators=(',',':'))
 

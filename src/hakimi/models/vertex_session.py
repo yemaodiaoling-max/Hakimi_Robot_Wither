@@ -21,6 +21,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, build_opener, HTTPSHandler, ProxyHandler
 
 from hakimi.core.http import NoRedirect as _NoRedirect
+from hakimi.models.tool_history import compact_contents
 
 
 def _gateway_model(headers, requested):
@@ -38,6 +39,8 @@ def declarations(names=None):
     for row in rows:
         if row['name'] == 'images.list':
             row['description'] = '列出本轮允许读取的图片路径；用image.read读取所需图片内容。'
+        elif row['name'] == 'tools.list':
+            row['description'] = '需要其他工具时查看名称；传入tool_name可查询完整参数并启用该工具。'
         elif row['name'] == 'voice.speak':
             # The name identifies the action. Keep only the argument and its real limit.
             row.pop('description')
@@ -116,13 +119,20 @@ class VertexSession:
         model = self.env['AGY_LLM_GATEWAY_MODELS']
         context = ssl.create_default_context(cafile=self.env['AGY_LLM_GATEWAY_CA_CERT'])
         opener = build_opener(ProxyHandler({}), HTTPSHandler(context=context), _NoRedirect())
+        # Pack only the native Vertex wire copy. Provider handoffs and the
+        # existing native retry still receive the original tool results.
+        attempt = getattr(self, '_request_attempt', 1)
+        if attempt == 1 and 'contents' in payload:
+            contents = compact_contents(payload['contents'])
+            if contents is not payload['contents']:
+                payload = dict(payload, contents=contents)
         req = Request(origin + '/v1beta/models/' + model + ':streamGenerateContent?alt=sse',
                       data=json.dumps(payload).encode(), headers={
                           'Authorization': 'Bearer ' + self.env['AGY_LLM_GATEWAY_API_KEY'],
                           'Content-Type': 'application/json'})
         started = time.monotonic()
         stats = {'at': time.time(), 'events': 0, 'first_part_ms': None,
-                 'attempt': getattr(self, '_request_attempt', 1)}
+                 'attempt': attempt}
         if (model == 'gemini-4-carbon'
                 and getattr(self, '_carbon_progress', None) is not None
                 and payload.get('generationConfig', {}).get('responseMimeType') == 'application/json'):
@@ -296,7 +306,7 @@ class VertexSession:
 
     def _tool(self, name, arguments, claim, timeout):
         from hakimi.prompt.tool_catalog import BY_NAME
-        from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL, offered as offer_drawing
+        from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL
         if name == 'members.mention':
             from hakimi.chat.member_mentions import mention, mention_status
             from hakimi.bridge.turn_coordinator import TurnCoordinator
@@ -305,11 +315,22 @@ class VertexSession:
             log_tool_call(self.cwd,name,mention_status(result),provider='gemini',trigger_id=claim.get('trigger_id') or claim['payload'].get('trigger_id',''))
             return result
         if name == 'tools.list':
-            from hakimi.prompt.tool_catalog import describe
-            try:
-                return describe(arguments.get('tool_name'), include_drawing=offer_drawing(claim['payload'], self.cwd))
-            except ValueError:
+            requested = arguments.get('tool_name')
+            if set(arguments) - {'tool_name'} or requested is not None and not isinstance(requested, str):
+                return {'error': 'unknown_tool_argument'}
+            available = claim.get('_discoverable_tool_names')
+            if available is None:
+                from hakimi.prompt.tool_selection import discoverable_names, select_names
+                names = {row['name'] for row in declarations()}
+                selected = select_names(claim['payload'], names, self.cwd)
+                available = discoverable_names(claim['payload'], names, selected)
+            if not requested:
+                return {'tools': [{'name': tool} for tool in sorted(available)]}
+            if requested not in available:
                 return {'error': 'unknown_tool'}
+            row, = declarations({requested})
+            row['inputSchema'] = row.pop('parametersJsonSchema')
+            return row
         if name == DRAW_TOOL:
             from hakimi.bridge.turn_coordinator import TurnCoordinator
             from hakimi.tools.drawing_delivery import draw
@@ -402,11 +423,16 @@ class VertexSession:
         submitted = False
         skipped = False
         review = isinstance(claim['payload'].get('internal_review'), dict)
-        from hakimi.prompt.tool_selection import select_names
+        from hakimi.prompt.tool_selection import discoverable_names, select_names
         from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL
         all_names = {row['name'] for row in declarations()}
-        active_names = select_names(claim['payload'], all_names, self.cwd)
-        available_names = all_names if DRAW_TOOL in active_names else all_names - {DRAW_TOOL}
+        progress = getattr(self, '_carbon_progress', None)
+        routing = claim.get('task_model_routing') or {}
+        research = (bool(progress) or routing.get('reason') == 'source_research'
+                    or 'gemini-4-carbon' in (routing.get('model'), self.env.get('AGY_LLM_GATEWAY_MODELS')))
+        active_names = select_names(claim['payload'], all_names, self.cwd,
+                                    hints=claim.get('_prompt_tool_hints', ()), research=research)
+        available_names = discoverable_names(claim['payload'], all_names, active_names)
         from hakimi.models.memory_retrieval import MemoryRetrieval
         retrieval = MemoryRetrieval()
         def remaining():
@@ -414,7 +440,6 @@ class VertexSession:
             if value <= 0:
                 raise TimeoutError('model_response_timeout')
             return value
-        progress = getattr(self, '_carbon_progress', None)
         def tool_remaining():
             if progress:
                 return progress.remaining()
@@ -525,6 +550,7 @@ class VertexSession:
                 self.contents.append(content)  # Preserve every part and thought signature verbatim.
                 responses = []
                 retrieval.begin(content['parts'])
+                discoverable = available_names - retrieval.names if retrieval.exhausted else available_names
                 for part in content['parts']:
                     if 'text' in part and not part.get('thought'):
                         texts.append(part['text'])
@@ -539,6 +565,8 @@ class VertexSession:
                     try:
                         if call['name'] == DRAW_TOOL and DRAW_TOOL not in available_names:
                             output = {'error': 'drawing_not_requested'}
+                        elif review and call['name'] not in available_names:
+                            output = {'error': 'review_tool_not_allowed'}
                         elif progress and call['name'] not in progress.delivery and (progress.calls >= 18 or progress.closing):
                             output = {'error': 'research_complete', 'message': '请用已取得的结果作答。'}
                         else:
@@ -546,6 +574,9 @@ class VertexSession:
                                 progress.touch()
                                 progress.calls += 1
                             def execute(arguments):
+                                if call['name'] == 'tools.list':
+                                    return self.tool_runner(call['name'], arguments,
+                                        dict(claim, _discoverable_tool_names=discoverable), tool_remaining())
                                 return self.tool_runner(call['name'], arguments, claim, tool_remaining())
 
                             def run_tool(arguments):
@@ -564,8 +595,11 @@ class VertexSession:
                     responses.append({'functionResponse': response})
                     ok = not output.get('error') and output.get('ok', True)
                     if call['name'] == 'tools.list' and ok:
-                        requested = call.get('args', {}).get('tool_name')
-                        active_names.update({requested} if requested in available_names else available_names if not requested else set())
+                        requested = call_args.get('tool_name')
+                        if isinstance(requested, str) and requested in discoverable:
+                            active_names.add(requested)
+                    if not ok and not review and self.last_error and self.last_error.get('tool') == call['name']:
+                        active_names.add('runtime.status')
                     if call['name'] == 'members.mention':
                         if ok and output.get('sent'):
                             submitted = True

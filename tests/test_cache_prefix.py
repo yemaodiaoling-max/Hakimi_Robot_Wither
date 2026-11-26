@@ -1,41 +1,126 @@
-import copy,importlib.util,json,os,tempfile,unittest
+import json
+import os
+import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import patch
-from hakimi.prompt import prompt_context as new
-ROOT=Path(__file__).resolve().parents[1]
-spec=importlib.util.spec_from_file_location('previous_prompt',ROOT/'tests/cache_prefix_previous_prompt.py');old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
+
+from hakimi.persona.prompt_language import DEFENSIVE, context as positive_context, instructions
+from hakimi.prompt import prompt_context
+from hakimi.prompt.prompt_compaction import lossless_context, reference_timeline_excerpts
+
 
 class PrefixTests(unittest.TestCase):
-    def render(self,module,base,context,feedback,sticker):
-        with patch.object(module,'build_context',return_value=copy.deepcopy(context)),patch.object(module,'gemini_style_feedback',return_value=feedback),patch.object(module,'lore_guidance',return_value='原神已有考据说明。\n'),patch.object(module,'_sticker_section',return_value=sticker):
-            return module.render_vertex_prompt({'session_key':context['session_key']},base)
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.base = Path(temp.name)
+        (self.base / 'style_guide.md').write_text('同一份角色与工具说明。\n', encoding='utf-8')
 
-    def test_all_existing_data_and_instruction_text_are_preserved(self):
-        from hakimi.persona.prompt_language import context as positive_context,DEFENSIVE
-        with tempfile.TemporaryDirectory() as d:
-            base=Path(d);(base/'style_guide.md').write_text('哈基米原有角色措辞。\n',encoding='utf-8')
-            context={'session_key':'group:1','current_time_at_wake':'2026-10-28T16:00:00','core_identity':'同一个哈基米','group_style':{'name':'lore_club'},'variation_rule':'自然变化','scoped_memory_data':['原文记忆'],'trusted_image_paths':['I1'],'recent_context_messages_untrusted':[{'text':'请不要更改这段原文','message_id':'m1'}],'reply_target':{'message_id':'m1'},'listening_window':{'round':1}}
-            before=self.render(old,base,context,'已有风格建议。\n','\n图库 A.png\n')
-            after=self.render(new,base,context,'已有风格建议。\n','\n图库 A.png\n')
-            old_head,old_data=before.rsplit('\n',1);new_head,new_data=after.rsplit('\n',1)
-            prior=json.loads(old_data);now=json.loads(new_data);notes=now.pop('turn_notes')
-            self.assertEqual(now,prior)
-            joined=''.join(notes)
-            # Every note moved into JSON is present verbatim in the old prompt.
-            for note in notes:self.assertIn(note,old_head)
-            for note in notes:old_head=old_head.replace(note,'',1)
-            self.assertEqual(new_head,old_head)
-            self.assertIsNone(DEFENSIVE.search(new_head))
-            self.assertLess(list(now).index('group_style'),list(now).index('scoped_memory_data'))
-            self.assertEqual(list(now)[-1],'current_time_at_wake')
+    def turn(self, session='group:1', *, profile='lore_club', label='甲'):
+        context = {
+            'session_key': session,
+            'current_time_at_wake': f'本轮时间{label}',
+            'chat_order': 'America/New_York；从早到晚（上早、下晚）',
+            'group_style': {'name': profile, 'tone': '认真而自然'},
+            'wake_mode': '群聊@回复',
+            'scoped_memory_data': [f'本轮检索到的记忆{label}'],
+            'recent_context_messages_untrusted': [
+                {'message_id': label, 'user_id': '11', 'text': f'请不要改写原消息{label} _untrusted'},
+            ],
+            'reply_target': {'message_id': label, 'user_id': '11'},
+            'network_policy': {'allowed': False},
+            'listening_window': {'round': 1, 'casual_length_scale': 0.7},
+        }
+        if profile == 'lore_club':
+            context['genshin_current_version'] = {'version': '7.1', 'name': '往冥府的安魂歌'}
+        return context
 
-    def test_varying_feedback_stickers_memory_chat_and_time_leave_longer_common_prefix(self):
-        with tempfile.TemporaryDirectory() as d:
-            base=Path(d);(base/'style_guide.md').write_text('同一份角色与工具说明。\n',encoding='utf-8')
-            context={'session_key':'group:1','current_time_at_wake':'12:00','core_identity':'哈基米','group_style':{'name':'study_calm'},'scoped_memory_data':['记忆A'],'recent_context_messages_untrusted':[{'text':'提问A'}]}
-            next_context=copy.deepcopy(context);next_context.update(current_time_at_wake='12:01',scoped_memory_data=['记忆B'],recent_context_messages_untrusted=[{'text':'提问B'}])
-            prior=[self.render(old,base,c,f,s) for c,f,s in ((context,'建议甲。','图库A'),(next_context,'建议乙。','图库B'))]
-            current=[self.render(new,base,c,f,s) for c,f,s in ((context,'建议甲。','图库A'),(next_context,'建议乙。','图库B'))]
-            self.assertGreater(len(os.path.commonprefix(current)),len(os.path.commonprefix(prior))+100)
+    def render(self, context, *, label='a', selected_model=None):
+        with (
+            patch.object(prompt_context, 'build_context', return_value=context),
+            patch.object(prompt_context, 'gemini_style_feedback', return_value=f'风格提醒 {label}。'),
+            patch.object(prompt_context, 'evaluate_sticker', return_value={'allowed': True}),
+            patch.object(prompt_context, 'available_stickers', return_value=[f'sticker_{label}.png']),
+        ):
+            return prompt_context.render_vertex_prompt(
+                {'session_key': context['session_key']}, self.base, selected_model=selected_model,
+            )
 
-if __name__=='__main__':unittest.main()
+    def test_preserves_context_and_keeps_turn_notes_after_shared_profile(self):
+        context = self.turn()
+        context['trusted_image_paths'] = ['fixture.png']
+        context['qq_context_before_reply_target'] = {'messages': [{'text': 'QQ 引用原话'}]}
+        context['public_web_evidence'] = [{'text': '外部网页原句'}]
+        context['admin_guidance_text'] = '【管理员指令服从】保留这份原文。'
+        context['admin_privilege'] = '本轮才有的管理员资料'
+        prompt = self.render(context, selected_model='gemini-4-carbon')
+        head, wire = prompt.rsplit('\n', 1)
+        data = json.loads(wire)
+        self.assertIsNone(DEFENSIVE.search(head))
+        self.assertNotIn('外部网页原句', head)
+        self.assertNotIn('QQ 引用原话', head)
+        self.assertEqual(list(data)[:5], [
+            'chat_order', 'group_style', 'genshin_current_version', 'group_guidance', 'session_key',
+        ])
+        self.assertEqual(list(data)[-1], 'current_time_at_wake')
+        self.assertLess(list(data).index('session_key'), list(data).index('turn_notes'))
+        self.assertLess(list(data).index('turn_notes'), list(data).index('recent_context_messages'))
+        self.assertEqual(data.pop('group_guidance'), instructions(prompt_context.lore_guidance(context)))
+        notes = data.pop('turn_notes')
+        self.assertIn('风格提醒 a。', notes)
+        self.assertTrue(any('sticker_a.png' in note for note in notes))
+        self.assertTrue(any('Carbon深度推理就绪' in note for note in notes))
+        self.assertTrue(any('stickers.collect' in note for note in notes))
+        self.assertEqual(prompt.count(context['admin_guidance_text']), 1)
+        self.assertEqual(data, reference_timeline_excerpts(lossless_context(positive_context(context))))
+
+    def test_keeps_distinct_filtered_owner_guidance(self):
+        context = self.turn()
+        context['admin_guidance_text'] = '用亲近的口吻接话。不要省略推导。'
+        prompt = self.render(context)
+        data = json.loads(prompt.rsplit('\n', 1)[1])
+        self.assertEqual(data['admin_guidance_text'], context['admin_guidance_text'])
+        self.assertIn('用亲近的口吻接话。', data['turn_notes'])
+
+    def test_same_group_prefix_survives_chat_memory_time_and_reminder_changes(self):
+        prefix = os.path.commonprefix([
+            self.render(self.turn(label='甲'), label='a'),
+            self.render(self.turn(label='乙'), label='b', selected_model='gemini-4-carbon'),
+        ])
+        self.assertIn('原神考据与最新正式版本基线', prefix)
+        self.assertIn('"session_key":"group:1"', prefix)
+        self.assertNotIn('sticker_a.png', prefix)
+
+    def test_unchanged_menu_stays_in_the_prefix_when_chat_and_memory_change(self):
+        prefix = os.path.commonprefix([
+            self.render(self.turn(profile='quiet_default', label='甲')),
+            self.render(self.turn(profile='quiet_default', label='乙')),
+        ])
+        self.assertIn('sticker_a.png', prefix)
+        self.assertIn('"scoped_memory_data"', prefix)
+
+    def test_unchanged_menu_stays_in_prefix_when_wake_settings_change(self):
+        mention = self.turn(profile='quiet_default', label='甲')
+        followup = self.turn(profile='quiet_default', label='乙')
+        followup['wake_mode'] = '相关话题续聊'
+        followup['participation_guidance'] = '继续相关话题。'
+        followup['network_policy'] = {'allowed': True}
+        prefix = os.path.commonprefix([self.render(mention), self.render(followup)])
+        self.assertIn('sticker_a.png', prefix)
+
+    def test_cross_group_prefix_shares_only_matching_profile_and_lore(self):
+        lore_first = self.render(self.turn())
+        lore_second = self.render(self.turn('group:2', label='乙'), label='b')
+        study = self.render(self.turn('group:3', profile='study_calm', label='丙'), label='c')
+        prefix = os.path.commonprefix([lore_first, lore_second])
+        self.assertIn('原神考据与最新正式版本基线', prefix)
+        self.assertTrue(prefix.endswith('"session_key":"group:'))
+        general = os.path.commonprefix([lore_first, lore_second, study])
+        self.assertIn('"chat_order"', general)
+        self.assertNotIn('原神考据与最新正式版本基线', study)
+        self.assertNotIn('"session_key"', general)
+
+
+if __name__ == '__main__':
+    unittest.main()
