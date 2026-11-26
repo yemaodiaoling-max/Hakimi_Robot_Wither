@@ -5,7 +5,8 @@ import re
 import sqlite3
 import time
 
-from hakimi.console.console_db import ApiError, _like, _name_map, _page, _paginate, _self_ids, _session_clause, db_conn
+from hakimi.console.errors import ApiError
+from hakimi.console.console_db import _like, _name_map, _page, _paginate, _self_ids, _session_clause, db_conn
 from hakimi.social import identity_links
 from hakimi.social.relation_perspective import project_outgoing
 from hakimi.console.graph_display import display_score, select_nodes

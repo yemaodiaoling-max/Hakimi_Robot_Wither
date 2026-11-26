@@ -9,10 +9,11 @@ import time
 from urllib.parse import quote, urlencode
 import xml.etree.ElementTree as ET
 
-from hakimi.models.search_policy import network_allowed,config,current_text,explicit_search
-from hakimi.models.search_budget import SearchBudget,BudgetUnavailable
-from hakimi.models import web_sources,web_quality
-from hakimi.models.web_transport import request
+from hakimi.prompt.turn_text import current_text
+from hakimi.web.search_policy import network_allowed,config,explicit_search
+from hakimi.web.search_budget import SearchBudget,BudgetUnavailable
+from hakimi.web import web_sources,web_quality
+from hakimi.web.web_transport import request
 
 PRICE=Decimal('.00075')
 
@@ -138,7 +139,7 @@ def _run(name,args,timeout,base,payload,*,transport=None):
     if name=='web.search':
         query=str(args.get('query') or '').strip()[:128]
         if not query:return {'error':'WEB_EMPTY_QUERY','network_used':False}
-        from hakimi.models.anime_calendar import calendar_results
+        from hakimi.web.anime_calendar import calendar_results
         asks_google=bool(re.search(r'(?:用|使用|请用|通过)\s*(?:谷歌|google)|(?:google|谷歌)\s*(?:搜索|一下|搜)',current_text(payload,directives_only=True,base=base),re.I))
         def calendar():
             return calendar_results(query,lambda url:_public(url,min(deadline,time.monotonic()+7),transport))
@@ -146,7 +147,7 @@ def _run(name,args,timeout,base,payload,*,transport=None):
         google_status=None
         use_google=settings.get('google_native') is True and not accepted
         if use_google and deadline-time.monotonic()>2:
-            from hakimi.models import google_search
+            from hakimi.web import google_search
             try:
                 google=google_search.request(query, '_leave_available' not in settings,
                     min(deadline-time.monotonic()-.5,30),base)
@@ -197,7 +198,7 @@ def _run(name,args,timeout,base,payload,*,transport=None):
         if not accepted:
             accepted=_news_or_encyclopedia(query,deadline,transport)
         if not accepted and deadline-time.monotonic()>.3:
-            from hakimi.models.vertex_web import _search_results
+            from hakimi.web.public_pages import _search_results
             url='https://html.duckduckgo.com/html/?'+urlencode({'q':query})
             page=_public(url,deadline,transport)
             for item in _search_results(page.get('body',''),url)[:8]:
@@ -220,7 +221,7 @@ def _run(name,args,timeout,base,payload,*,transport=None):
             page=_public(args['url'],deadline,transport)
             if page.get('error'):return {'error':page['error'],'status':'page_not_read'}
             body=page.get('body','')
-            from hakimi.models.vertex_web import Text
+            from hakimi.web.public_pages import Text
             metadata=web_quality.Metadata();metadata.feed(body)
             parser=Text();parser.feed(body)
             item=web_quality.source({'url':page.get('url',args['url']),'title':''.join(metadata.title),

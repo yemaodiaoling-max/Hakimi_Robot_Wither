@@ -7,6 +7,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from hakimi.console.errors import ApiError
 from hakimi.social.social_schema import ensure_schema
 
 
@@ -14,14 +15,6 @@ DEFAULT_SELF_ID = str(bot_identity.SELF_QQ)
 SESSIONS = re.compile(r"(?:group|private):[1-9][0-9]{0,19}")
 KINDS = {"chat", "person", "preference", "lore", "episode", "reflection", "commitment", "dialogue"}
 METRICS = {"manual", "assisted", "interaction"}
-
-
-class ApiError(Exception):
-    def __init__(self, status, code, message):
-        super().__init__(message)
-        self.status = status
-        self.code = code
-        self.message = message
 
 
 def _path(base):

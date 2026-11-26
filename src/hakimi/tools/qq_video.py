@@ -44,7 +44,7 @@ def register(base, session, mid, attachments):
 
 
 def watch(base, payload, ref, timeout=90, *, owner=None, is_active=None):
-    from hakimi.models.search_policy import network_allowed
+    from hakimi.web.search_policy import network_allowed
     if not network_allowed(payload,base):
         return {'ok':False,'error':'WEB_DISABLED_FOR_THIS_TURN'}
     rows,target = select_context(payload)

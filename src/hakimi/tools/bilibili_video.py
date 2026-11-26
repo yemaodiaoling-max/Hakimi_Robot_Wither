@@ -325,7 +325,7 @@ class VideoError(RuntimeError):
 
 def prepare(payload, base=ROOT, *, timeout_seconds=180, is_active=None, source=None, owner=None):
     """Program delegation to the companion's actual A/V viewing, never another QQ model."""
-    from hakimi.models.search_policy import network_allowed
+    from hakimi.web.search_policy import network_allowed
     if not network_allowed(payload,base):return None
     deadline = time.monotonic()+min(180,float(timeout_seconds))
     url, source = (find_url(source.get('text', '')), source) if source is not None else candidate(payload)

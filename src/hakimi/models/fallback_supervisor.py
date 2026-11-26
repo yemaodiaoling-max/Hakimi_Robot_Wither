@@ -169,7 +169,7 @@ async def fallback_loop(load_config, base=BASE_DIR, runner=None):
                         status.update(last_started_at=now, last_trigger_id=claim["trigger_id"], state="running")
                         _save_status(base, status)
                         try:
-                            from hakimi.models.search_routing import prepare as prepare_search
+                            from hakimi.web.search_routing import prepare as prepare_search
                             claim['payload']['_web_context'] = await asyncio.to_thread(prepare_search,claim['payload'],base,timeout=min(12,max(.1,claim['deadline']-time.time()-10)))
                             cold=bool(claim['payload'].get('cold_topic_request'))
                             video = None if cold else await asyncio.to_thread(bilibili_video.prepare, claim["payload"], base)

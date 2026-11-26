@@ -1,6 +1,10 @@
 from decimal import Decimal
+from importlib import import_module, resources
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -10,6 +14,54 @@ from hakimi.models.search_budget import SearchBudget,BudgetUnavailable,deepseek_
 from hakimi.bridge.turn_coordinator import TurnCoordinator
 from hakimi.bridge.reply_format import text_bubbles
 from hakimi.bridge.interaction_policy import delivered
+from hakimi.paths import source_file
+
+
+class WebPackageTests(unittest.TestCase):
+    def test_old_model_imports_share_canonical_web_modules(self):
+        names = (
+            'anime_calendar', 'dsh_search', 'google_search', 'search_budget',
+            'search_judge', 'search_policy', 'search_routing',
+            'web_access', 'web_fetch_worker', 'web_quality', 'web_sources',
+            'web_transport',
+        )
+        models = import_module('hakimi.models')
+        for name in names:
+            with self.subTest(name=name):
+                legacy = import_module(f'hakimi.models.{name}')
+                canonical = import_module(f'hakimi.web.{name}')
+                self.assertIs(legacy, canonical)
+                self.assertIs(getattr(models, name), canonical)
+        pages = import_module('hakimi.web.public_pages')
+        self.assertIs(import_module('hakimi.models.vertex_web'), pages)
+        self.assertIs(models.vertex_web, pages)
+        self.assertIs(import_module('vertex_web'), pages)
+        self.assertEqual(source_file('vertex_web.py'), Path(pages.__file__))
+        with patch('hakimi.models.search_policy.network_allowed') as guard:
+            self.assertIs(import_module('hakimi.web.search_policy').network_allowed, guard)
+
+    def test_dsh_search_plugin_is_beside_its_python_module(self):
+        plugin = resources.files('hakimi.web').joinpath('dsh_search.mjs')
+        self.assertTrue(plugin.is_file())
+        self.assertTrue(resources.files('hakimi.models').joinpath('dsh_search.mjs').is_file())
+        module = import_module('hakimi.web.dsh_search')
+        with resources.as_file(plugin) as path:
+            self.assertEqual(path.resolve(), Path(module.__file__).with_suffix('.mjs').resolve())
+
+    def test_web_worker_from_transport_and_legacy_module_entry_point(self):
+        from hakimi.web.web_transport import request
+
+        expected = {'error': 'unsupported_web_operation', 'billable': False}
+        self.assertEqual(request('unsupported', {}, 5), expected)
+        package_root = Path(import_module('hakimi').__file__).resolve().parents[1]
+        legacy = subprocess.run(
+            [sys.executable, '-m', 'hakimi.models.web_fetch_worker'],
+            input=json.dumps({'kind': 'unsupported', 'args': {}, 'timeout': 5}),
+            text=True, capture_output=True, check=True, timeout=5,
+            env=dict(os.environ, PYTHONPATH=str(package_root)),
+        )
+        self.assertEqual(json.loads(legacy.stdout), expected)
+
 
 class SearchStackTests(unittest.TestCase):
     def setUp(self):

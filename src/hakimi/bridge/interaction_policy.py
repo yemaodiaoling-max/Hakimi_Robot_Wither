@@ -60,7 +60,7 @@ def annotation(payload,kind,base,target_id=None):
 def delivered(session,receipt,interaction,first,base,now=None,*,text='',provider=None,trigger_id='',message_id=None,sticker_digest=None):
     now=time.time() if now is None else now
     data=state(base)
-    from hakimi.models.web_sources import delivered as source_delivered
+    from hakimi.web.web_sources import delivered as source_delivered
     source_delivered(base,session,message_id,str(receipt).rsplit(':',1)[0])
     if receipt in data.get('receipts',[]):return
     data['receipts']=(data.get('receipts',[])+[receipt])[-128:]

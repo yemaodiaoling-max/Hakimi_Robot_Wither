@@ -104,7 +104,7 @@ def execute(request,claim,coordinator,base):
         receipt = submit_fallback_result(result,claim,coordinator,Path(base))
         return {'ok': bool(receipt.get('accepted')), 'result': receipt}
     if name in {'web.search','web.read','web.sources'}:
-        from hakimi.models.web_access import run
+        from hakimi.web.web_access import run
         output=run(name,data,max(.1,min(15,claim['deadline']-time.time()-2)),base,claim['payload'])
         return {'ok':not bool(output.get('error')),'result':output}
     if name=='tools.list':

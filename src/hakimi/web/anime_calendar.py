@@ -5,7 +5,7 @@ from datetime import date, datetime
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
-from hakimi.models import web_quality
+from hakimi.web import web_quality
 
 _CALENDAR = re.compile(r'新番|番表|当季动画|本季动画|在播动画|seasonal anime|anime (?:lineup|schedule)', re.I)
 

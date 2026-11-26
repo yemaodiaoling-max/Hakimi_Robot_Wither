@@ -7,6 +7,13 @@ import subprocess
 import sys
 import tempfile
 from hakimi import paths
+from hakimi.core.process_job import WindowsJob
+
+
+def _dsh_job_error(code):
+    from hakimi.models.fallback_runner import FallbackError
+
+    return FallbackError('FALLBACK_' + code)
 
 
 def request(kind,args,timeout):
@@ -25,15 +32,14 @@ def _request(kind,args,timeout):
     env['PATH']=str(paths.dsh_bin())+os.pathsep+env.get('PATH','')
     options={'start_new_session':True} if os.name!='nt' else {'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0)}
     try:
-        process=subprocess.Popen([sys.executable,'-m','hakimi.models.web_fetch_worker'],
+        process=subprocess.Popen([sys.executable,'-m','hakimi.web.web_fetch_worker'],
                                  stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=env,**options)
     except OSError:return {'error':'web_worker_unavailable','billable':False}
     job=None
     try:
         if os.name=='nt' and kind=='dsh_search':
-            from hakimi.models.fallback_runner import _WindowsJob
             try:
-                job=_WindowsJob(process)
+                job=WindowsJob(process,error_factory=_dsh_job_error)
             except Exception:
                 process.kill()
                 process.communicate()

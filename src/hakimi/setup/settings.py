@@ -201,7 +201,7 @@ def save_credentials(value: dict):
 
 def secret_state() -> dict:
     """Which secrets are present - booleans only."""
-    from hakimi.gateway.server import upstream_key
+    from hakimi.gateway.config import upstream_key
     creds = credentials()
     aux_creds = creds.get("aux") or {}
     live_aux = aux_config.load(root()) if aux_config.has_config(root()) else {}
@@ -243,7 +243,7 @@ def init_instance(target: Path | None = None) -> dict:
     if not (base / modules.FILE_NAME).exists():
         modules.save(["core"], base)
         created.append(modules.FILE_NAME)
-    from hakimi.gateway.server import init as gateway_init
+    from hakimi.gateway.config import init as gateway_init
     created += gateway_init()["created"]
     from hakimi.console.console_auth import load_or_create_token
     load_or_create_token(CONSOLE_TOKEN)
@@ -508,7 +508,7 @@ def _apply_owner(base, s):
 
 
 def _apply_gateway(s, new_secrets):
-    from hakimi.gateway import server as gw
+    from hakimi.gateway import config as gw
     gw.init()
     config = gw.load_config()
     m = s["model"]
@@ -531,7 +531,7 @@ def _apply_gateway(s, new_secrets):
 
 
 def _apply_route(base, s):
-    from hakimi.gateway.server import directory
+    from hakimi.gateway.config import directory
     _atomic_json(base / "state" / "vertex_route.json", {
         "enabled": True, "gateway_directory": str(directory()), "model": "gemini-4-argon",
         "month_limit_usd": None, "fallback": "dsh"})
@@ -642,7 +642,7 @@ def _apply_bilibili_login(base, new_secrets):
 
 def _apply_video(base, s):
     v = s["video"]
-    from hakimi.gateway.server import CA_NAME, KEY_NAME, directory
+    from hakimi.gateway.config import CA_NAME, KEY_NAME, directory
     video = modules.video_dir()
     state = video / "state"
     room = v["priority_room"] or "0"

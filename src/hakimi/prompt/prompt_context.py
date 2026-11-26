@@ -419,7 +419,7 @@ def build_context(data, base=BASE_DIR, now=None, *, self_history_snapshot=None):
                 cat_identity="嘴硬心软、被他哄两句就悄悄翘尾巴的贴身小猫，省去生硬冷怼和机箱套话",
             )
             context["selected_real_dialogues"] = [dict(item) for item in _DESKTOP_PET_OWNER_EXAMPLES]
-    from hakimi.models.search_policy import network_allowed
+    from hakimi.web.search_policy import network_allowed
     context['network_policy'] = {'allowed':network_allowed(data,base),'guidance':'本轮禁止联网时不得调用任何公开搜索、网页、视频或替代联网出口；来源追问用web.sources读取本群已送达回复的本地证据。'}
     if data.get('_web_context'):
         context['public_web_evidence'] = data['_web_context']

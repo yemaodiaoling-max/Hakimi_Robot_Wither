@@ -3,8 +3,9 @@ import json
 import re
 import time
 
-from hakimi.models.search_policy import config,current_text,decide,network_allowed,compact_query
-from hakimi.models import web_sources
+from hakimi.prompt.turn_text import current_text
+from hakimi.web.search_policy import config,decide,network_allowed,compact_query
+from hakimi.web import web_sources
 
 
 def prepare(payload,base,*,timeout=12,judge=None):
@@ -40,7 +41,8 @@ def _prepare(payload,base,*,timeout=12,judge=None):
             judge = None
         elif judge_mode == 'main_gateway':
             def judge(q_text, b, timeout_seconds=3):
-                from hakimi.models import gateway_text, search_judge
+                from hakimi.models import gateway_text
+                from hakimi.web import search_judge
                 task = search_judge.POLICY + json.dumps(q_text[:2000], ensure_ascii=False)
                 res = gateway_text.complete_via_gateway(
                     b, task, tier=aux_search.get('model') or 'gemini-4-hydrogen',
@@ -49,7 +51,8 @@ def _prepare(payload,base,*,timeout=12,judge=None):
                 return dict(search_judge.parse(res['text']), model=res['tier'])
         elif judge_mode == 'custom_api':
             def judge(q_text, b, timeout_seconds=3):
-                from hakimi.models import gateway_text, search_judge
+                from hakimi.models import gateway_text
+                from hakimi.web import search_judge
                 task = search_judge.POLICY + json.dumps(q_text[:2000], ensure_ascii=False)
                 res = gateway_text.complete_via_http_api(
                     aux_search, [{'role': 'user', 'content': task}],
@@ -57,12 +60,12 @@ def _prepare(payload,base,*,timeout=12,judge=None):
                 )
                 return dict(search_judge.parse(res['text']), model=res['model'])
         else:
-            from hakimi.models.search_judge import classify
+            from hakimi.web.search_judge import classify
             judge=classify
     decision=decide(payload,base,judge=judge,timeout=min(3,max(.1,timeout)))
     result={'decision':decision,'network_used':False}
     if decision['search'] and timeout-(time.monotonic()-started)>.2:
-        from hakimi.models.web_access import run
+        from hakimi.web.web_access import run
         query=compact_query(text)
         result['search']=run('web.search',{'query':query},timeout-(time.monotonic()-started),base,payload)
         result['network_used']=bool(result['search'].get('results'))

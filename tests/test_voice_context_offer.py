@@ -148,9 +148,9 @@ class VoiceContextOfferTests(unittest.TestCase):
         self.assertEqual(tts.offer_mode(p,self.base),'context')
 
     def test_current_text_is_read_once_per_offer(self):
-        from hakimi.models import search_policy
-        original=search_policy.current_text
-        with patch.object(search_policy,'current_text',wraps=original) as current:
+        from hakimi.prompt import turn_text
+        original=turn_text.current_text
+        with patch.object(turn_text,'current_text',wraps=original) as current:
             self.assertEqual(tts.offer_mode(payload('想听听你的声音'),self.base),'requested')
             current.assert_called_once()
 

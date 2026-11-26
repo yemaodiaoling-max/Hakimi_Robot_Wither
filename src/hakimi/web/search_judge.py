@@ -6,8 +6,8 @@ import threading
 import time
 
 from hakimi.models.dsh_text_worker import TextWorker
-from hakimi.models.search_budget import SearchBudget,BudgetUnavailable,deepseek_cost,peak_at,cost_bounds
-from hakimi.models.search_policy import config
+from hakimi.web.search_budget import SearchBudget,BudgetUnavailable,deepseek_cost,peak_at,cost_bounds
+from hakimi.web.search_policy import config
 from hakimi.prompt.prompt_budget import estimate_tokens
 
 _LOCK=threading.Lock()

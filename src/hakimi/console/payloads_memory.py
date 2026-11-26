@@ -6,7 +6,8 @@ import re
 import sqlite3
 from pathlib import Path
 
-from hakimi.console.console_db import ApiError, KINDS, _like, _page, _paginate, _path, _session_clause, db_conn
+from hakimi.console.errors import ApiError
+from hakimi.console.console_db import KINDS, _like, _page, _paginate, _path, _session_clause, db_conn
 from hakimi.models import vertex_route
 from hakimi.social import identity_links
 

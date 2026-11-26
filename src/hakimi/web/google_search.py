@@ -4,7 +4,7 @@ import ssl
 from urllib.error import HTTPError
 from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
 
-from hakimi.models import web_quality
+from hakimi.web import web_quality
 
 
 def sources(candidate):

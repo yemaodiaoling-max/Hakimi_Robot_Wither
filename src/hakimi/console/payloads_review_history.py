@@ -4,7 +4,8 @@ import math
 import re
 import time
 
-from hakimi.console.console_db import ApiError, SESSIONS, _name_map, _page, _paginate, db_conn
+from hakimi.console.errors import ApiError
+from hakimi.console.console_db import SESSIONS, _name_map, _page, _paginate, db_conn
 
 
 def _timestamp(values,key):

@@ -90,7 +90,7 @@ def _card(item,needles):
 
 def search_cards(base,payload,sources,query):
     """Keep the full receipt locally; only send short, distinct evidence to chat."""
-    from hakimi.models.web_quality import terms
+    from hakimi.web.web_quality import terms
     needles=terms(query)
     cards=[]
     seen=set()
@@ -103,7 +103,7 @@ def search_cards(base,payload,sources,query):
 
 
 def trace_cards(trace,query):
-    from hakimi.models.web_quality import terms
+    from hakimi.web.web_quality import terms
     needles=terms(query)
     sources=sorted(trace['sources'],key=lambda item:item.get('attribution')!='explicitly_cited')
     return dict(trace,sources=[_card(item,needles) for item in sources[:3]],

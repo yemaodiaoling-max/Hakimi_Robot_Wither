@@ -58,7 +58,6 @@ LAYOUT = {
     'models': (
         'vertex_route',
         'vertex_session',
-        'vertex_web',
         'scoped_session',
         'agy_session',
         'provider_health',
@@ -134,6 +133,19 @@ LAYOUT = {
     ),
 }
 LEGACY = {name: f"hakimi.{pkg}.{name}" for pkg, names in LAYOUT.items() for name in names}
+LEGACY['vertex_web'] = 'hakimi.web.public_pages'
+
+# Old dotted paths share the same module and state as their canonical imports.
+# The executable web_fetch_worker keeps a file for direct invocations and python -m.
+MODULE_ALIASES = {
+    f"hakimi.models.{name}": f"hakimi.web.{name}"
+    for name in (
+        "anime_calendar", "dsh_search", "google_search", "search_budget",
+        "search_judge", "search_policy", "search_routing",
+        "web_access", "web_quality", "web_sources", "web_transport",
+    )
+}
+MODULE_ALIASES['hakimi.models.vertex_web'] = 'hakimi.web.public_pages'
 
 
 class _AliasLoader(importlib.abc.Loader):
@@ -141,15 +153,16 @@ class _AliasLoader(importlib.abc.Loader):
         self.target = target
 
     def create_module(self, spec):
-        return importlib.import_module(self.target)
+        return None
 
     def exec_module(self, module):
-        pass
+        # Replace the temporary alias without changing the real module's spec.
+        sys.modules[module.__name__] = importlib.import_module(self.target)
 
 
 class LegacyFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, name, path=None, target=None):
-        dotted = LEGACY.get(name)
+        dotted = LEGACY.get(name) or MODULE_ALIASES.get(name)
         if dotted is None:
             return None
         return importlib.util.spec_from_loader(name, _AliasLoader(dotted))

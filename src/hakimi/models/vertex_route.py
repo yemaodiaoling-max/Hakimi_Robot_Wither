@@ -31,18 +31,7 @@ from urllib.request import (
     build_opener,
 )
 
-def _gateway_project():
-    """Project label of the configured gateway (``gateway_provision.json``)."""
-    env = os.environ.get("HAKIMI_GATEWAY_PROJECT", "").strip()
-    if env:
-        return env
-    try:
-        return str(json.loads((paths.gateway_dir() / "gateway_provision.json").read_text())["project"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return "hakimi-local"
-
-
-PROJECT = _gateway_project()
+from hakimi.gateway.protocol import MONTHLY_EXHAUSTED, PROJECT, TIMEZONE
 from hakimi.models.vertex_model import HYDROGEN, vertex_model
 
 MODEL = "gemini-3.8-flash"
@@ -53,7 +42,6 @@ GATEWAY_URL = f"https://{GATEWAY_HOST}:{GATEWAY_PORT}"
 PRODUCTION_DIRECTORY = paths.gateway_dir()
 MONTH_LIMIT = Decimal(os.environ.get("HAKIMI_MONTH_LIMIT_USD", "110") or "110")
 MONTH_LIMIT_TEXT = format(MONTH_LIMIT.quantize(Decimal("0.000000001")), "f")
-TIMEZONE = "America/Los_Angeles"
 MEASUREMENT = "gateway_token_estimate"
 PRICE_VERIFIED_AT = "2026-10-27"
 CREDITS_NOTE = "官方赠金余额尚未接入"
@@ -67,7 +55,6 @@ BUDGET_STATE = "vertex_budget_status.json"
 GATE_STATE = "vertex_primary_gate.json"
 SESSION_DIRECTORY = "gemini_vertex_sessions_v1"
 OFFICIAL_SPEND_CAP = 'vertex_official_spend_cap_breached'
-MONTHLY_EXHAUSTED = 'vertex_monthly_budget_exhausted'
 
 _REQUIRED_CONFIG = {
     "enabled",

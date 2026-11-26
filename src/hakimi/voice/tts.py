@@ -51,7 +51,7 @@ def _explicit_text(text):
 
 
 def explicit(payload,base=None):
-    from hakimi.models.search_policy import current_text
+    from hakimi.prompt.turn_text import current_text
     return _explicit_text(current_text(payload,directives_only=True,base=base,include_quotes=False))
 
 
@@ -71,7 +71,7 @@ def _voice_offer(payload,base,*,for_send=False):
     cfg=settings(base) if base else {}
     if not cfg.get('enabled') or not cfg.get('tts_enabled'):return None,False
     from hakimi.core.context_window import select_context
-    from hakimi.models.search_policy import current_text
+    from hakimi.prompt.turn_text import current_text
     from hakimi.voice.store import preview
     rows,target=select_context(payload)
     session=payload.get('session_key')
@@ -161,7 +161,7 @@ def speech_mode(payload, base):
 def hum_requested(payload,base=None):
     if isinstance(payload.get('internal_review'),dict) or payload.get('internal_review') or payload.get('cold_topic_request') or payload.get('is_proactive'):
         return False
-    from hakimi.models.search_policy import current_text
+    from hakimi.prompt.turn_text import current_text
     text=current_text(payload,directives_only=True,base=base,include_quotes=False)
     if _TEXT_ONLY.search(text):return False
     if re.search(r'(?:不要|别|不准|不用|禁止|不想).{0,4}(?:唱|哼)|完整|指定|朗读|歌词|《|》',text):return False

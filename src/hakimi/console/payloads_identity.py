@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from hakimi.console.console_db import ApiError
+from hakimi.console.errors import ApiError
 from hakimi.social import identity_links
 from hakimi.console.group_catalog import identity_display
 

@@ -532,7 +532,7 @@ def _cmd_call(args):
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
     elif name in {"web.search", "web.read","web.sources"}:
-        from hakimi.models.web_access import run
+        from hakimi.web.web_access import run
         payload=TurnCoordinator(BASE_DIR).snapshot().get('payload',{})
         if payload.get('session_key')!=args.session:raise ToolError('搜索会话不匹配')
         output = run(name, data, 15,BASE_DIR,payload)

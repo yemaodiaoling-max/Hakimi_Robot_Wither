@@ -34,7 +34,8 @@ from hakimi.social.memory_social import (
 )
 from hakimi.social import identity_links
 from hakimi.social import identity_member_context
-from hakimi.console.console_db import ApiError, DEFAULT_SELF_ID, KINDS, METRICS, SESSIONS, _like, _name_map, _page, _paginate, _path, _self_ids, _session_clause, db_conn, initialise_social, open_db  # noqa: F401 (re-export)
+from hakimi.console.errors import ApiError
+from hakimi.console.console_db import DEFAULT_SELF_ID, KINDS, METRICS, SESSIONS, _like, _name_map, _page, _paginate, _path, _self_ids, _session_clause, db_conn, initialise_social, open_db  # noqa: F401 (re-export)
 from hakimi.console.console_auth import _chmod_private, _read_token_file, load_or_create_token  # noqa: F401 (re-export)
 from hakimi.console.payloads_memory import groups_payload, memories_payload, memory_payload, status_payload, vertex_budget_payload  # noqa: F401 (re-export)
 from hakimi.console.payloads_social import _assessments_for, _evidence_details, _graph_metric, _selected_score, _staleness, graph_payload, people_payload, person_payload, relation_payload  # noqa: F401 (re-export)
@@ -237,10 +238,10 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             if path == "/api/status":
                 payload = status_payload(self.server.base, self.server.started_at)
             elif path == "/api/activity":
-                from hakimi.setup.panel_api import activity_payload
+                from hakimi.console.activity import activity_payload
                 payload = activity_payload()
             elif path == "/api/setup":
-                from hakimi.setup.panel_api import setup_get
+                from hakimi.console.setup_api import setup_get
                 payload = setup_get()
             elif path == "/api/modules":
                 from hakimi.modules import status_payload as modules_payload
@@ -331,8 +332,8 @@ class ConsoleHandler(BaseHTTPRequestHandler):
                 return
             data = self._read_json_body()
             if path.startswith("/api/setup"):
-                from hakimi.setup import panel_api
-                payload = panel_api.setup_post(path, data)
+                from hakimi.console.setup_api import setup_post
+                payload = setup_post(path, data)
             elif path == "/api/drawing":
                 payload = _with_drawing_quota(self.server.base, drawing_settings.save_settings(self.server.base, data))
             elif path == "/api/identity/preview":

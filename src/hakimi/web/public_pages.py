@@ -1,4 +1,4 @@
-"""Public web tools for direct sessions; no Gemini server-tool surcharge."""
+"""Search, fetch and parse public pages for web tools."""
 from html.parser import HTMLParser
 import base64
 import html

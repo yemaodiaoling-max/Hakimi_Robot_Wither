@@ -234,7 +234,7 @@ def _agent_lane():
             selected_model = routing['model'] if routing else None
             if routing:
                 claim = dict(claim, task_model_routing=routing)
-            from hakimi.models.search_routing import prepare as prepare_search
+            from hakimi.web.search_routing import prepare as prepare_search
             claim['payload']['_web_context'] = prepare_search(claim['payload'],RUNTIME,timeout=min(12,max(.1,claim['deadline']-time.time()-10)))
             prompt=render_prompt(claim['payload'],RUNTIME,claim,cli_label=command,wait_after_turn=False,native=bool(routing),selected_model=selected_model)
             if not review and coordinator.was_superseded(claim['trigger_id']):

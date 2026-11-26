@@ -8,7 +8,7 @@ import time
 import uuid
 from zoneinfo import ZoneInfo
 
-from hakimi.models.search_budget import NANO, nano
+from hakimi.core.money import NANO, nano
 
 
 WINDOW_SECONDS = 20 * 60

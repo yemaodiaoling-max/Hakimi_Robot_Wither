@@ -547,7 +547,7 @@ class TurnCoordinator:
     def _reply_committed(self, state, reply_id):
         record = state.get('reply_intent', {}).get('record', {})
         payload = state['payload']
-        from hakimi.models.web_sources import commit as commit_web_sources
+        from hakimi.web.web_sources import commit as commit_web_sources
         commit_web_sources(self.base_dir, record)
         sources = _reply_sources(payload)
         if sources:

@@ -1,7 +1,7 @@
 """Small monetary sub-ledger: actual settlements, outstanding liabilities retained."""
 from contextlib import contextmanager
 from datetime import datetime,timezone
-from decimal import Decimal,ROUND_CEILING
+from decimal import Decimal
 import json
 from pathlib import Path
 import sqlite3
@@ -9,16 +9,10 @@ import time
 import uuid
 from zoneinfo import ZoneInfo
 
-NANO=1_000_000_000
+from hakimi.core.money import NANO, nano
 
 
 class BudgetUnavailable(RuntimeError):pass
-
-
-def nano(value):
-    amount=Decimal(str(value))
-    if not amount.is_finite() or amount<0:raise ValueError('invalid_search_budget')
-    return int((amount*NANO).to_integral_value(rounding=ROUND_CEILING))
 
 
 class SearchBudget:

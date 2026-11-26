@@ -18,12 +18,9 @@ import sys
 import time
 import uuid
 from urllib.error import HTTPError
-from urllib.request import Request, build_opener, HTTPSHandler, ProxyHandler, HTTPRedirectHandler
+from urllib.request import Request, build_opener, HTTPSHandler, ProxyHandler
 
-
-class _NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
+from hakimi.core.http import NoRedirect as _NoRedirect
 
 
 def _gateway_model(headers, requested):
@@ -35,7 +32,7 @@ def _gateway_model(headers, requested):
 
 def declarations(names=None):
     from hakimi.prompt.tool_catalog import TOOLS
-    from hakimi.models.vertex_web import TOOLS as WEB_TOOLS
+    from hakimi.web.public_pages import TOOLS as WEB_TOOLS
     rows = [{'name': item['name'], 'description': item['description'],
              'parametersJsonSchema': copy.deepcopy(item['inputSchema'])} for item in TOOLS]
     for row in rows:
@@ -318,7 +315,7 @@ class VertexSession:
             from hakimi.tools.drawing_delivery import draw
             return draw(self.cwd, TurnCoordinator(self.cwd), claim['token'], 'gemini', arguments, timeout=timeout)
         if name in {'web.search', 'web.read','web.sources'}:
-            from hakimi.models.web_access import run
+            from hakimi.web.web_access import run
             try:
                 return run(name, arguments, timeout,self.cwd,claim['payload'])
             except (OSError, ValueError, KeyError):
@@ -339,7 +336,7 @@ class VertexSession:
                 report['image_paths'] = [frame]
             return report
         if name in {'video.watch', 'video.watch_miniapp'}:
-            from hakimi.models.search_policy import network_allowed
+            from hakimi.web.search_policy import network_allowed
             if not network_allowed(claim['payload'],self.cwd):return {'error':'WEB_DISABLED_FOR_THIS_TURN'}
             from hakimi.core.context_window import select_context
             from hakimi.tools import bilibili_video as video

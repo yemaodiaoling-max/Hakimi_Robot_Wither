@@ -1,5 +1,21 @@
 # 架构说明
 
+## 从功能找到源码
+
+安装时的 `core / qq / video / pet` 是用户可以启用的产品功能，见[模块说明](modules.md)。开发时按要修改的行为找源码。一个 QQ 回复会经过多个包。
+
+| 想修改什么 | 从哪里入手 | 交给谁处理下一步 |
+|---|---|---|
+| 收到的 QQ 协议消息、图片或发送回执 | `hakimi.transport`。官方 QQ 和 OneBot 有各自的适配代码 | 收到的事件交给 `hakimi.bridge`；发送回执由对应通道确认 |
+| 是否回复、补充消息能否合并 | `hakimi.bridge` 的调度器和轮次协调器 | 需要生成时交给模型会话 |
+| 更换模型、备用通道或会话 | `hakimi.models` | 调用模型网关；需要联网证据时调用 `hakimi.web` |
+| 搜索网页、管理搜索额度、记录回答引用的来源 | `hakimi.web`。普通网页读取在 `public_pages.py`，来源记录在 `web_sources.py` | 向调用方返回网页内容、来源或失败原因 |
+| 修改本地网关额度或账单 | `hakimi.gateway.ledger`。配置和证书在 `config.py`，HTTP 处理在 `server.py` | 客户端与网关共用 `protocol.py` 的项目标记和预算字段 |
+| 在设置页面增加功能 | `hakimi.console.setup_api` 接收 HTTP 参数，`hakimi.setup.settings` 校验和写入实例配置 | 命令行设置也使用同一套配置逻辑 |
+| 调整记忆、关系、语音或日记 | 分别看 `hakimi.memory`、`hakimi.social`、`hakimi.voice`、`hakimi.features.diary_daily` | B 站观看程序在独立的 `bili_companion` 包，Windows 桌宠在 `desktop_pet/` |
+
+例如，遇到同一人连续补充两句话，先看 `bridge/turn_coordinator.py` 的轮次状态和 `bridge/followup.cpp` 的文本判定。如果回复发出了却没有收到 OneBot 确认，再看 `transport/onebot_websocket.py`。
+
 ## 代码与数据分离
 
 | 位置 | 内容 |
@@ -31,17 +47,13 @@
 
 ## 旧模块名
 
-每个模块的**文件名都没变**，只是按职责放进了子包，例如 `bridge_daemon.py` 现在是 `hakimi/bridge/bridge_daemon.py`。`import memory_store` 这类旧写法由 `hakimi._legacy` 继续支持，新旧名字指向同一个模块对象。这样以下几处都不受影响：
+新代码从实际所属包导入。历史脚本仍可使用 `import memory_store`；网页模块原有导入路径（如 `hakimi.models.vertex_web`）也可继续使用。`hakimi._legacy` 将这些路径按需解析到同一个模块对象，因此缓存、测试替换和配置状态可以共享。
 
-- 故障追踪里的文件名；
-- Sol / Codex 的允许文件清单（`paths.source_file('official_transport.py')` 定位源码）；
-- 测试里 `patch('vertex_session.time.time')` 这样的写法。
-
-包内代码一律用完整包名导入，并直接从定义该名字的模块导入，不经过统一出口。
+`paths.source_file('vertex_web.py')` 可按旧文件名找到当前实现。旧的网页工作进程也保留可执行入口 `python -m hakimi.models.web_fetch_worker`。
 
 ## 分层与依赖
 
-包内 144 个模块之间**没有循环依赖**（测试和 `tools/` 不计）。几处大文件按职责拆开，原文件保留为统一出口，再导出原来的名字：
+主要模块按下表分工。兼容入口保留已有导入路径。
 
 | 原文件 | 拆成 |
 |---|---|
@@ -57,7 +69,7 @@
 
 记忆的写入方向：`memory_store` → `graph_index`、`social_schema`（建表、写入时索引）。关系评分和图谱查询在上层，通过 `store()` 工厂使用存储。
 
-`bridge/bridge_daemon.py`（约 1900 行）暂未拆：它的测试直接替换模块里的全局变量（`engine`、`load_config`、图片缓存目录等），拆开要连同测试一起改写。
+OneBot 的消息格式、图片缓存和 WebSocket 收发分别在 `transport/onebot_media.py`、`transport/onebot_websocket.py`。`bridge/bridge_daemon.py` 持有运行中的会话和连接状态，向适配器传入所需队列及回调。
 
 ## 提示词与人设
 
