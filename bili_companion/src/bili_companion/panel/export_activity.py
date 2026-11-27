@@ -1,11 +1,14 @@
 from contextlib import closing
 """Allowlisted, read-only activity snapshot. No credentials or execution controls."""
+import argparse
+from datetime import datetime, timedelta
 import time
 import json
 from pathlib import Path
 import sqlite3
 import sys
 import re
+from zoneinfo import ZoneInfo
 from bili_companion.sync.types import SENSITIVE
 
 
@@ -19,7 +22,27 @@ def safe_text(value, limit=200):
     return re.sub(r'https?://[^\s<>]+', '[链接已隐藏]', value)[:limit]
 
 
-def export_activity(database=DATABASE, bridge_database=Path('state/bridge/bilibili_bridge.sqlite3'), *, now=None):
+def _live_danmaku(db, now):
+    zone = ZoneInfo('America/New_York')
+    today = datetime.fromtimestamp(now, zone).date()
+    days = {today - timedelta(days=offset): [] for offset in range(30)}
+    start = datetime.combine(min(days), datetime.min.time(), zone).timestamp()
+    rows = db.execute("""
+        SELECT at, room, text FROM danmaku_attempts
+        WHERE account=? AND state='sent' AND at>=? AND at<=?
+          AND typeof(text)='text' AND trim(text)<>''
+        ORDER BY at DESC, room, text
+    """, ('hakimi-bilibili', start, now))
+    for stamp, room, text in rows:
+        day = datetime.fromtimestamp(stamp, zone).date()
+        days[day].append(dict(at=stamp, room=str(room), text=safe_text(text, 120)))
+    return dict(timezone=zone.key, days=[
+        dict(date=day.isoformat(), messages=messages) for day, messages in days.items()
+    ])
+
+
+def export_activity(database=DATABASE, bridge_database=Path('state/bridge/bilibili_bridge.sqlite3'), *,
+                    now=None, include_live_danmaku=False):
     now = time.time() if now is None else now
     cutoff = now - 30 * 86400
     with closing(sqlite3.connect(Path(database).resolve().as_uri() + '?mode=ro', uri=True, timeout=5)) as db:
@@ -38,6 +61,9 @@ def export_activity(database=DATABASE, bridge_database=Path('state/bridge/bilibi
                                 for segment in raw if isinstance(segment, dict)] if isinstance(raw, list) else []
             videos.append(item)
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        live = {}
+        if include_live_danmaku:
+            live['live_danmaku'] = _live_danmaku(db, now) if 'danmaku_attempts' in tables else None
         runtime = {}
         if 'watcher_state' in tables:
             row = db.execute('SELECT value FROM watcher_state WHERE id=1').fetchone()
@@ -111,13 +137,16 @@ def export_activity(database=DATABASE, bridge_database=Path('state/bridge/bilibi
     if not bridge.exists():
         for selection in selections:
             selection['qq_context'] = [dict(**r,state='unavailable',summary='来源正文当前不可用；保留当时提供的来源编号') for r in selection['qq_context']]
-    return dict(schema_version=2, exported_at=now,
+    return dict(schema_version=2, exported_at=now, **live,
                 video_history=videos, video_comment_attempts=comments, comment_reply_attempts=replies, qq_memory_reads=reads, video_selections=selections, runtime_status=runtime)
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--live-danmaku', action='store_true', help='Include accepted daily livestream messages')
+    options = parser.parse_args()
     try:
-        output = json.dumps(export_activity(), ensure_ascii=False, allow_nan=False)
+        output = json.dumps(export_activity(include_live_danmaku=options.live_danmaku), ensure_ascii=False, allow_nan=False)
     except Exception:
         print('activity_export_failed', file=sys.stderr)
         return 1

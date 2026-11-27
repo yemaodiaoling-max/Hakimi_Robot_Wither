@@ -13,8 +13,8 @@ def activity_payload() -> dict:
         return {"available": False, "reason": "module_disabled"}
     video = modules.video_dir()
     env = dict(os.environ, PYTHONPATH=str(video / "src"))
-    result = subprocess.run([sys.executable, "-m", "bili_companion.panel.export_activity"], cwd=str(video), env=env,
-                            capture_output=True, timeout=12)
+    result = subprocess.run([sys.executable, "-m", "bili_companion.panel.export_activity", "--live-danmaku"],
+                            cwd=str(video), env=env, capture_output=True, timeout=12)
     if result.returncode:
         return {"available": False, "reason": "export_failed"}
     return dict(json.loads(result.stdout), available=True)

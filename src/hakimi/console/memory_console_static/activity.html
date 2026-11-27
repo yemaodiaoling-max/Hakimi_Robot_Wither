@@ -15,7 +15,7 @@
   <header class="page-head">
     <div>
       <h1>视频活动</h1>
-      <p>B 站上实际看过的视频、读到的 QQ 共享记忆和评论尝试。片段记录才是观察依据；“结束观看”不代表完整看完。</p>
+      <p>B 站上实际看过的视频、直播间发言、读到的 QQ 共享记忆和评论尝试。片段记录才是观察依据；“结束观看”不代表完整看完。</p>
     </div>
     <div class="toolbar">
       <p id="updated" class="meta" role="status">正在读取…</p>
@@ -27,9 +27,10 @@
 
   <nav class="section-nav" aria-label="分区">
     <a href="#videos-heading">视频记录</a>
+    <a href="#live-heading">直播间发言</a>
     <a href="#memory-heading">QQ 共享记忆</a>
     <a href="#comments-heading">评论尝试</a>
-    <span class="meta">最近 30 天 · 每类最多 100 条</span>
+    <span class="meta">最近 30 天</span>
   </nav>
 
   <section class="card feed">
@@ -37,6 +38,16 @@
     <p class="card-sub">选片理由是模型自述；上下文标签只表示摘要曾提供给模型，不证明它导致了选择。</p>
     <div id="videos" class="feed-list"></div>
     <details id="pending" class="fold"><summary>未形成观看记录的选片</summary><div id="unwatched" class="feed-list"></div></details>
+  </section>
+
+  <section class="card feed">
+    <h2 id="live-heading" class="card-title">直播间发言</h2>
+    <div class="live-toolbar">
+      <label for="live-date">日期（纽约时间）</label>
+      <select id="live-date" disabled></select>
+    </div>
+    <p class="card-sub">收录 B 站已受理的哈基米弹幕。</p>
+    <div id="live-messages" aria-live="polite"></div>
   </section>
 
   <section class="card feed">

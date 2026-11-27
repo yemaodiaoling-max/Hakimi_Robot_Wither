@@ -12,11 +12,71 @@ function time(value){if(!value)return '时间未记录';const d=new Date(typeof 
 function link(row){if(!row.bvid)return element('strong',row.title||'未选择视频');const a=element('a',row.title?row.title+' · '+row.bvid:row.bvid);a.href='https://www.bilibili.com/video/'+row.bvid;a.target='_blank';a.rel='noopener noreferrer';return a;}
 function contextId(row){return 'qq-'+encodeURIComponent(row.source_id)+'-r'+row.revision;}
 let initialContextNavigation=true;
+let selectedLiveDate = '';
+
+function renderLiveDanmaku(report) {
+  const selector = document.getElementById('live-date');
+  const list = document.getElementById('live-messages');
+  if (!selector || !list) return;
+  const days = report?.days || [];
+  selector.disabled = !days.length;
+  if (!days.length) {
+    selector.replaceChildren();
+    list.replaceChildren(element('p', '直播发言记录暂不可用。', 'empty'));
+    return;
+  }
+
+  const labels = days.map(day => day.date + ' · ' + day.messages.length + ' 条');
+  if (selector.options.length !== days.length ||
+      days.some((day, i) => selector.options[i].textContent !== labels[i])) {
+    selector.replaceChildren(...days.map((day, i) => {
+      const option = element('option', labels[i]);
+      option.value = day.date;
+      return option;
+    }));
+  }
+  selector.value = days.some(day => day.date === selectedLiveDate) ? selectedLiveDate : days[0].date;
+  const clock = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: report.timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  });
+  function showDay() {
+    const day = days.find(item => item.date === selector.value);
+    if (!day?.messages.length) {
+      list.replaceChildren(element('p', '这一天没有已受理的直播间发言。', 'empty'));
+      return;
+    }
+    const entries = day.messages.map(message => {
+      const item = document.createElement('article');
+      item.className = 'live-message';
+      const header = document.createElement('header');
+      const date = new Date(message.at * 1000);
+      const stamp = element('time', clock.format(date));
+      stamp.dateTime = date.toISOString();
+      header.append(stamp);
+      if (/^[1-9][0-9]{0,19}$/.test(message.room)) {
+        const room = element('a', '直播间 ' + message.room);
+        room.href = 'https://live.bilibili.com/' + message.room;
+        room.target = '_blank';
+        room.rel = 'noopener noreferrer';
+        header.append(room);
+      }
+      item.append(header, element('div', message.text, 'detail'));
+      return item;
+    });
+    list.replaceChildren(...entries);
+  }
+  selector.onchange = () => {
+    selectedLiveDate = selector.value;
+    showDay();
+  };
+  showDay();
+}
 function revealContext(hash,navigate=true){const entry=document.getElementById(hash.slice(1));if(!entry)return;for(let parent=entry;parent;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;}if(navigate){entry.scrollIntoView({behavior:'smooth',block:'center'});entry.focus({preventScroll:true});}}
 function chip(row){const a=element('a','QQ · '+row.source_id.replace(/^qq:/,'')+' r'+row.revision,'chip');a.href='#'+contextId(row);a.addEventListener('click',event=>{event.preventDefault();history.replaceState(null,'',location.pathname+location.search+a.hash);revealContext(a.hash);});return a;}
 function memoryEntry(row){const d=document.createElement('details');d.id=contextId(row);d.className='memory-entry';d.tabIndex=-1;d.append(element('summary','QQ · '+row.source_id.replace(/^qq:/,'')+' r'+row.revision+(row.state==='available'?'':' · 正文不可用')),element('div',row.summary||'该修订正文当前不可用。','detail'));const session=row.session||row.source_session;if(session){const a=element('a','查看会话消息');a.href='/messages.html?'+new URLSearchParams({session});d.append(a);}return d;}
 function selectionDetails(item,selection){if(!selection){item.append(element('p','未记录选片理由','empty'));return;}item.append(element('p','模型自述 · '+selection.reason,'reason'));const contexts=element('div','','chips');contexts.append(element('span','选片上下文','label'));for(const ref of selection.qq_context||[])contexts.append(chip(ref));if(!selection.qq_context.length)contexts.append(element('span','未提供QQ摘记','empty'));item.append(contexts);const trace=document.createElement('details');trace.append(element('summary','选择于 '+time(selection.at)),element('div','调用编号：'+selection.request_id,'meta'));item.append(trace);}
 function render(data){
+ renderLiveDanmaku(data.live_danmaku);
  const state=data.runtime_status||{},future=state.next_observation_at*1000>Date.now();
  const understanding=state.understanding_state==='WAITING_VIDEO_BUDGET'?(future?'预算节奏等待':'等待视频预算恢复'):({PAUSED_BUDGET:'预算暂停',REDUCED_BUDGET_PACING:'预算节奏等待',SAMPLED:'已完成观察',UNAVAILABLE:'观察不可用'}[state.understanding_state]||state.understanding_state||'未知');
  const runtime=document.getElementById('runtime');runtime.replaceChildren(element('div','最后记录：'+(state.state||'未知')+' · '+understanding),element('div','观察安排：'+(state.understanding_state==='WAITING_VIDEO_BUDGET'&&!future?'预算恢复后重新安排':time(state.next_observation_at))+(state.last_error?' · 错误类型：'+state.last_error:''),'meta'),element('div','计划与记录不保证当前正在观看；同步时间不是实际观察时间。','meta'));
