@@ -1,0 +1,14 @@
+[Unit]
+Description=Deliver archived diary to bound owner's QQ private chat
+After=hakimi-keyring.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@ROOT@
+Environment=HAKIMI_ROOT=@ROOT@
+Environment=TZ=America/New_York
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=@VENV@/bin/python @ROOT@/private/tools/diary_owner_delivery.py --since 2026-11-24
+TimeoutStartSec=300
+UMask=0077
+Nice=10

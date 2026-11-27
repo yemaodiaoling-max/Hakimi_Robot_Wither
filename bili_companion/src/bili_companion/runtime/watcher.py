@@ -461,11 +461,18 @@ class Watcher:
         try:
             chunk=await self.clip(s)
             if chunk is STALE:return 'stale_capture'
+            if s['live_session']:
+                # Segment completion jitters. Wait for a nearly due slot instead of losing a whole segment.
+                delay = s.get('next_observation_at', 0) - self.clock()
+                if 0 < delay <= 1:
+                    await asyncio.sleep(delay)
+                    if self.state.snapshot()['watch_epoch'] != epoch:return 'stale_observation'
             if not self.observation_due(s):
                 self.state.change(lambda current:current.update(understanding_state='REDUCED_BUDGET_PACING'))
                 self.log('perception_gap',epoch=epoch,start=chunk.start,end=chunk.end,
                     reason='budget_pacing',modality=chunk.modality)
                 return 'sample_skipped'
+            sample_started = self.clock()
             scope=Scope(self.account,'live_room' if s['live_session'] else 'video',
                 self.room if s['live_session'] else s['video']['bvid'])
             if s['video']:
@@ -519,7 +526,7 @@ class Watcher:
             self.log('observed',epoch=epoch,start=chunk.start,end=chunk.end,
                 modality=chunk.modality,evidence_count=len(result.observation.evidence),status=result.status)
             self.state.change(lambda current:current.update(understanding_state='SAMPLED',last_error=None))
-            self.schedule_observation(bool(s['live_session']))
+            self.schedule_observation(bool(s['live_session']), started_at=sample_started)
             if result.candidate and s['live_session']:
                 outcome=await asyncio.to_thread(self.executor.dispatch,result.candidate,self.state.snapshot,
                     self.platform.send_danmaku,account_id=self.account,now=self.clock(),clock=self.clock)
@@ -550,7 +557,8 @@ class Watcher:
             self.video_target_epoch=None
             self.log('watch_error',**error_details(exc),epoch=epoch)
             self.state.change(lambda current:current.update(last_error=type(exc).__name__,understanding_state='UNAVAILABLE'))
-            if s['live_session']:await self.close_recorder()
+            if s['live_session']:
+                if chunk is None:await self.close_recorder()
             elif s['video']:
                 bvid=s['video']['bvid']
                 current=self.state.snapshot()['video'] or {}
@@ -658,7 +666,7 @@ class Watcher:
         self.log('budget_deferred',epoch=epoch)
         return 'budget_deferred'
 
-    def schedule_observation(self,live):
+    def schedule_observation(self,live, *, started_at=None):
         minimum=self.config.get('live_observation_seconds',90) if live else self.config.get('video_observation_seconds',180)
         profile=self.cost_profile(live)
         pacing_window=profile['live_guaranteed_hours']*3600 if live and profile else 86400
@@ -677,8 +685,11 @@ class Watcher:
             affordable_rounds=max(1,remaining/profile['average'])
             interval=min(until_reset,max(minimum,window/affordable_rounds,
                 profile['average']*pacing_window/max(.000001,pacing_pool)))
-        self.state.change(lambda current:current.update(next_observation_at=self.clock()+interval))
-        self.log('pacing',next_seconds=round(interval,2),live=live)
+        now = self.clock()
+        start = started_at if live and profile is None and started_at is not None else now
+        due = max(now, start + interval)
+        self.state.change(lambda current:current.update(next_observation_at=due))
+        self.log('pacing',next_seconds=round(due-now,2),live=live)
 
     async def run(self):
         await self.poll()

@@ -56,7 +56,7 @@ def generate(day):
     style=paths.persona('style_guide.md',ROOT).read_text(encoding='utf-8').split('## 工具与数据边界')[0][:4200]
     prompt=(persona.text("diary_writer.txt")+day+'\n人设：'+style+'\n既往日记：\n'+json.dumps(samples,ensure_ascii=False)[:5000])
     prompt += '\n近七篇首尾摘录（仅用于检查主题重复，不是完整原文）：\n' + json.dumps(recent_diary_contrasts(day), ensure_ascii=False)
-    prompt += '\n以下是有时间与原文出处的真实材料，匿名使用，区分当日与往日回想；勿编造事件或身份隐私。无适合材料时明确写猫系想象。参考最近日记，避免重复主题、意象与套话：\n' + json.dumps(diary_material(day), ensure_ascii=False)
+    prompt += '\n以下是有时间与原文出处的真实材料，优先用材料里的昵称、外号或熟悉称呼（避免动辄写“一个人”“另一个人”），区分当日与往日回想；勿写QQ号或真实姓名等身份隐私，勿编造事件。无适合材料时明确写猫系想象。参考最近日记，避免重复主题、意象与套话：\n' + json.dumps(diary_material(day), ensure_ascii=False)
     health=availability(ROOT);dsh=health.get('mode')=='dsh' or health.get('fast') and health.get('mode')!='gemini'
     provider='gemini';raw=None
     from hakimi.models import antigravity_tasks

@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for new archived diaries and resume confirmed unsent parts
+
+[Timer]
+OnActiveSec=10s
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Unit=hakimi-diary-delivery.service
+
+[Install]
+WantedBy=timers.target

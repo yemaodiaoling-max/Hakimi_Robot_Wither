@@ -413,7 +413,7 @@ class CognitionEngine:
             or len(text)>120 or any(ord(c)<32 for c in text)):raise ValueError('invalid_reply')
         return text.strip() if value['speak'] else ''
 
-    def _call_for_duty(self, model, payload, validator, **kwargs):
+    def _call_for_duty(self, model, payload, validator, *, response_validator=None, **kwargs):
         return self._call(model,payload,**kwargs)
 
     def select_video(self, candidates, *, recent_video_history=()):
@@ -489,8 +489,7 @@ class CognitionEngine:
                 '不要请求子代理或后续模型调用。视听依据用本次events的0起索引。')
             if scope.kind=='live_room':
                 bundle=self.persona.load(self.bridge.recall(budget=1000) if self.bridge else ())
-                # Observation pacing already bounds failed calls. Only a valid,
-                # fresh decision consumes the ordinary expression interval.
+                # Observation pacing bounds checks; only a fresh candidate starts the speech cooldown.
                 expression_enabled=bool(allow_decision and self._decision_due(scope, record=False, session=chunk.session_id))
                 instruction+='\n'+bundle.system_instruction+LIVE_FEEDBACK_INSTRUCTION
                 data.update(expression_enabled=expression_enabled,
@@ -570,8 +569,11 @@ class CognitionEngine:
                          or any(ord(c) < 32 for c in live['text']))):
                     raise ValueError('invalid_live_feedback')
 
+        # An unusable live observation can use the existing backup while its clip is fresh.
+        # Leaving a valid clip quiet is a completed observation.
+        live_validator = (lambda response: parse(response, 'live-validation')) if scope.kind == 'live_room' else None
         response, request_id, usage = self._call_for_duty(self.observer_model,
-            self._payload(instruction,data,media),validate,
+            self._payload(instruction,data,media),validate, response_validator=live_validator,
             purpose='video-observe' if scope.kind=='video' else 'live-observe')
         ids, usages = [request_id], {request_id:usage}
         try:
@@ -641,7 +643,7 @@ class CognitionEngine:
                 if self.epoch_is_current is not None and not self.epoch_is_current(scope,chunk.session_id,watch_epoch):
                     candidate=None
                     decision_status='stale_epoch'
-                else:
+                elif candidate is not None:
                     self._record_decision(scope,chunk.session_id)
             result=PerceptionResult('observed',observation,candidate,tuple(ids),usages,
                 live_decision_status=decision_status)

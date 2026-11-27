@@ -215,11 +215,13 @@ class SinglePassTests(unittest.TestCase):
                 # Isolate persistent decision throttles between subtests.
                 with self.db.connect(write=True) as db: db.execute('DELETE FROM cognition_decisions')
 
-    def test_valid_model_silence_consumes_expression_interval(self):
+    def test_silence_leaves_next_observation_free_to_speak(self):
         silent = dict(observed(), live_feedback=dict(speak=False, text='', evidence_indices=[]))
-        engine, _ = self.unified([response(silent), self.live_response()])
+        engine, client = self.unified([response(silent), self.live_response(), self.live_response()])
         self.assertEqual(engine.observe(self.chunk, self.scope, 3).live_decision_status, 'model_silent')
+        self.assertEqual(engine.observe(self.chunk, self.scope, 3).live_decision_status, 'ready')
         self.assertEqual(engine.observe(self.chunk, self.scope, 3).live_decision_status, 'cooldown')
+        self.assertEqual(len(client.requests), 3)
 
     def test_expression_interval_is_scoped_to_live_session(self):
         engine, _ = self.unified([self.live_response(), self.live_response()])
