@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import ctypes
+from datetime import datetime, timezone
 import io
 import json
 import os
@@ -21,6 +22,29 @@ from PIL import Image, ImageGrab
 ROOT_DIR = Path(__file__).resolve().parent.parent
 from desktop_pet import connection as _connection
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+_WEEKDAYS_ZH = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+
+
+def local_clock_snapshot(now: float | None = None) -> dict:
+    """Return the client PC's real local clock snapshot with explicit UTC offset."""
+    ts = time.time() if now is None else float(now)
+    utc = datetime.fromtimestamp(ts, timezone.utc)
+    local_dt = utc.astimezone()
+    raw_offset = local_dt.strftime("%z") or "+0000"
+    offset = raw_offset[:3] + ":" + raw_offset[3:5] + (":" + raw_offset[5:] if len(raw_offset) > 5 else "")
+    tz_name = local_dt.tzname() or "local"
+    return {
+        "datetime": local_dt.isoformat(timespec="seconds"),
+        "date": local_dt.strftime("%Y-%m-%d"),
+        "time": local_dt.strftime("%H:%M:%S"),
+        "weekday": _WEEKDAYS_ZH[local_dt.weekday()],
+        "timezone": "local",
+        "timezone_label": f"本机时区 {tz_name} UTC{offset}",
+        "utc_offset": offset,
+        "unix_seconds": int(ts),
+        "utc_datetime": utc.isoformat(timespec="seconds"),
+        "source": "client_clock",
+    }
 
 
 def get_active_window_title() -> str:

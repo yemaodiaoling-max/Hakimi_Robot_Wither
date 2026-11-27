@@ -35,7 +35,13 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import random
-from desktop_pet.client_bridge import ServerBridge, VoiceRecorder, capture_screen_b64, get_active_window_title
+from desktop_pet.client_bridge import (
+    ServerBridge,
+    VoiceRecorder,
+    capture_screen_b64,
+    get_active_window_title,
+    local_clock_snapshot,
+)
 from desktop_pet.livehime_overlay import LivehimeServer
 from desktop_pet.local_executor import execute_approved_action
 
@@ -1246,6 +1252,7 @@ class HakimiDesktopPet:
         win_title = get_active_window_title()
 
         def worker():
+            client_time = local_clock_snapshot()
             img_b64, img_mime = (None, "image/jpeg")
             saved_screen_path = None
             if capture_screen:
@@ -1296,6 +1303,7 @@ class HakimiDesktopPet:
                     "screen_path": saved_screen_path if capture_screen else None,
                     "audio_b64": audio_b64,
                     "audio_mime": audio_mime,
+                    "client_time": client_time,
                 }
                 tmp_pending = pending_file.with_suffix(".tmp")
                 tmp_pending.write_text(json.dumps(pending_data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1332,6 +1340,7 @@ class HakimiDesktopPet:
                 "audio_b64": audio_b64,
                 "audio_mime": audio_mime,
                 "window_title": win_title,
+                "client_time": client_time,
                 "max_turns": int(self.cfg.get("max_turns", 10)),
                 "token_budget": int(self.cfg.get("token_budget", 16000)),
             }

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import base64
 import copy
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,11 @@ import time
 import uuid
 from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
+
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None  # type: ignore[assignment]
 
 os.environ.setdefault("HAKIMI_ROOT", "/opt/hakimi/data")
 os.environ.setdefault("PYTHONUTF8", "1")
@@ -45,6 +51,108 @@ DEFAULT_MODEL = "gemini-4-hydrogen"
 DEFAULT_MAX_TURNS = 8
 STEADY_KEEP_TURNS = 5
 DEFAULT_TOKEN_BUDGET = 16000
+_WEEKDAYS_ZH = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+_SESSION_CLIENT_TZ: timezone | None = None
+_SESSION_CLIENT_TZ_LABEL: str = ""
+
+
+def _parse_utc_offset(offset_str: str) -> timezone | None:
+    m = re.fullmatch(r"([+-])(\d{2}):?(\d{2})", str(offset_str or "").strip())
+    if not m:
+        return None
+    sign = -1 if m.group(1) == "-" else 1
+    hours = int(m.group(2))
+    minutes = int(m.group(3))
+    if hours > 14 or minutes >= 60 or (hours == 14 and minutes > 0):
+        return None
+    return timezone(timedelta(minutes=sign * (hours * 60 + minutes)))
+
+
+def _resolve_fallback_tz(ts: float):
+    if _SESSION_CLIENT_TZ is not None:
+        return _SESSION_CLIENT_TZ, _SESSION_CLIENT_TZ_LABEL or "client"
+    tz_env = os.environ.get("TZ", "").strip()
+    if tz_env and ZoneInfo is not None:
+        try:
+            return ZoneInfo(tz_env), tz_env
+        except Exception:
+            pass
+    try:
+        from hakimi.core.owner import load as _owner_load
+        owner_tz = str(_owner_load().get("timezone") or "").strip()
+        if owner_tz and ZoneInfo is not None:
+            return ZoneInfo(owner_tz), owner_tz
+    except Exception:
+        pass
+    local_dt = datetime.fromtimestamp(ts, timezone.utc).astimezone()
+    if (
+        os.name != "nt"
+        and local_dt.utcoffset() == timedelta(0)
+        and (local_dt.tzname() or "").upper() in {"UTC", "GMT", "ETC/UTC"}
+        and ZoneInfo is not None
+    ):
+        try:
+            return ZoneInfo("America/New_York"), "America/New_York"
+        except Exception:
+            pass
+    return local_dt.tzinfo or timezone.utc, local_dt.tzname() or "local"
+
+
+def _desktop_clock_snapshot(req: dict | None = None, timezone_name: str = "local", now: float | None = None) -> dict:
+    """Resolve current wall-clock time preferring the client PC's real timezone."""
+    global _SESSION_CLIENT_TZ, _SESSION_CLIENT_TZ_LABEL
+    if timezone_name != "local":
+        return clock_snapshot(timezone_name, now=now)
+    ts = time.time() if now is None else float(now)
+    utc = datetime.fromtimestamp(ts, timezone.utc)
+
+    if isinstance(req, dict) and isinstance(req.get("client_time"), dict):
+        ct = req["client_time"]
+        ct_unix = ct.get("unix_seconds")
+        fresh = ct_unix is None or (isinstance(ct_unix, (int, float)) and abs(float(ct_unix) - ts) <= 300.0)
+        raw_offset = str(ct.get("utc_offset") or "").strip()
+        parsed_tz = _parse_utc_offset(raw_offset)
+        if fresh and parsed_tz is not None:
+            _SESSION_CLIENT_TZ = parsed_tz
+            _SESSION_CLIENT_TZ_LABEL = str(ct.get("timezone_label") or f"UTC{raw_offset}").strip()
+        if fresh and ct.get("date") and ct.get("time") and ct.get("weekday"):
+            tz_label = str(ct.get("timezone_label") or (f"本机时区 UTC{raw_offset}" if raw_offset else "本机时区")).strip()
+            dt_str = str(ct.get("datetime") or f"{ct['date']}T{ct['time']}{raw_offset}").strip()
+            return {
+                "datetime": dt_str,
+                "date": str(ct["date"]).strip(),
+                "time": str(ct["time"]).strip(),
+                "weekday": str(ct["weekday"]).strip(),
+                "timezone": "local",
+                "timezone_label": tz_label,
+                "utc_offset": raw_offset,
+                "unix_seconds": int(ct_unix) if isinstance(ct_unix, (int, float)) else int(ts),
+                "utc_datetime": str(ct.get("utc_datetime") or utc.isoformat(timespec="seconds")),
+                "source": "client_clock",
+            }
+
+    tz_obj, tz_label_name = _resolve_fallback_tz(ts)
+    current = utc.astimezone(tz_obj)
+    raw_off = current.strftime("%z") or "+0000"
+    offset = raw_off[:3] + ":" + raw_off[3:5] + (":" + raw_off[5:] if len(raw_off) > 5 else "")
+    if tz_label_name.startswith("本机时区") and f"UTC{offset}" in tz_label_name:
+        formatted_label = tz_label_name
+    elif tz_label_name.startswith("本机时区"):
+        formatted_label = f"{tz_label_name} UTC{offset}"
+    else:
+        formatted_label = f"本机时区 {tz_label_name} UTC{offset}"
+    return {
+        "datetime": current.isoformat(timespec="seconds"),
+        "date": current.strftime("%Y-%m-%d"),
+        "time": current.strftime("%H:%M:%S"),
+        "weekday": _WEEKDAYS_ZH[current.weekday()],
+        "timezone": "local",
+        "timezone_label": formatted_label,
+        "utc_offset": offset,
+        "unix_seconds": int(ts),
+        "utc_datetime": utc.isoformat(timespec="seconds"),
+        "source": "server_tz",
+    }
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -442,7 +550,7 @@ def _execute_server_tool(name: str, args: dict) -> dict:
             return {"ok": bool(latest), "entry": latest or "暂无日记"}
         if name == "time_now":
             tz = str(args.get("timezone", "local") or "local")
-            return {"ok": True, "time": clock_snapshot(tz)}
+            return {"ok": True, "time": _desktop_clock_snapshot(timezone_name=tz)}
         if name == "calculator_evaluate":
             expr = str(args.get("expression", ""))
             return {"ok": True, "result": calculate(expr)}
@@ -741,7 +849,7 @@ def handle_chat(req: dict) -> dict:
         rolling_summary=state.get("rolling_summary", ""),
         active_topics=state.get("active_topics", []),
     )
-    now_snap = clock_snapshot("local")
+    now_snap = _desktop_clock_snapshot(req=req)
 
     # Build multi-turn contents starting with system framing + rolling summary + prior history
     contents: list[dict] = []
@@ -1202,7 +1310,7 @@ def handle_context_pack(req: dict) -> dict:
         "ok": True,
         "voice_transcript": voice_transcript,
         "memory_pack": memory_pack,
-        "time": clock_snapshot("local"),
+        "time": _desktop_clock_snapshot(req=req),
     }
 
 

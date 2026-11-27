@@ -25,6 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+from desktop_pet.client_bridge import local_clock_snapshot
 from desktop_pet.pet_handoff import HANDOFF_FILE, ensure_handoff_file
 
 STATE_DIR = BASE_DIR / "state"
@@ -105,6 +106,23 @@ def save_agy_context(data: dict) -> None:
     os.replace(tmp, CONTEXT_FILE)
 
 
+def _format_prompt_time(now_time: dict) -> str:
+    """Format local wall-clock timestamp with explicit timezone offset for prompt clarity."""
+    date_part = str(now_time.get("date", "") or "").strip()
+    time_part = str(now_time.get("time", "") or "").strip()
+    weekday_part = str(now_time.get("weekday", "") or "").strip()
+    offset_part = str(now_time.get("utc_offset", "") or "").strip()
+    meta_parts = []
+    if weekday_part:
+        meta_parts.append(weekday_part)
+    if offset_part:
+        meta_parts.append(f"主人本机 UTC{offset_part}" if not offset_part.startswith("UTC") else f"主人本机 {offset_part}")
+    base = f"{date_part} {time_part}".strip()
+    if meta_parts:
+        return f"{base} ({', '.join(meta_parts)})".strip()
+    return base
+
+
 def render_prompt(
     turn_data: dict,
     pack_data: dict,
@@ -121,7 +139,14 @@ def render_prompt(
 
     voice_transcript = pack_data.get("voice_transcript", "")
     memory_pack = pack_data.get("memory_pack", {})
-    now_time = pack_data.get("time", {})
+    client_time = turn_data.get("client_time")
+    pack_time = pack_data.get("time")
+    if isinstance(client_time, dict) and client_time.get("date") and client_time.get("time"):
+        now_time = client_time
+    elif isinstance(pack_time, dict) and pack_time.get("date") and pack_time.get("time"):
+        now_time = pack_time
+    else:
+        now_time = local_clock_snapshot()
 
     turns = int(ctx.get("turns", 0))
     max_turns = int(ctx.get("max_turns", 10))
@@ -130,7 +155,7 @@ def render_prompt(
     should_rotate = next_turn >= max_turns
 
     mode_label = "👀 主动看屏幕并吐槽 (被动观察模式)" if mode == "peek" else "💬 主人桌宠主动对话"
-    time_str = f"{now_time.get('date', '')} {now_time.get('time', '')} ({now_time.get('weekday', '')})".strip()
+    time_str = _format_prompt_time(now_time)
 
     lines = [
         f"=== 🐾 哈基米桌宠第 {next_turn}/{max_turns} 轮 ===",
@@ -218,6 +243,14 @@ def main() -> int:
                     time.sleep(0.2)
                     continue
 
+                raw_ct = turn_data.get("client_time")
+                client_time = (
+                    raw_ct
+                    if isinstance(raw_ct, dict) and raw_ct.get("date") and raw_ct.get("time")
+                    else local_clock_snapshot()
+                )
+                turn_data["client_time"] = client_time
+
                 # Fetch context pack over ServerBridge
                 from desktop_pet.client_bridge import ServerBridge
                 bridge = ServerBridge()
@@ -228,6 +261,7 @@ def main() -> int:
                         "window_title": turn_data.get("window_title", "") or "",
                         "audio_b64": turn_data.get("audio_b64"),
                         "audio_mime": turn_data.get("audio_mime", "audio/wav"),
+                        "client_time": client_time,
                     })
                 except Exception as e:
                     pack_res = {"ok": False, "error": str(e)}

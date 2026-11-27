@@ -252,5 +252,74 @@ class DesktopPetRollingTests(unittest.TestCase):
             saved = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(saved["history"][-1]["text"], "你别先睡着了")
 
+    def test_desktop_clock_snapshot_and_timezone_fallback(self):
+        orig_tz = pet_mod._SESSION_CLIENT_TZ
+        orig_lbl = pet_mod._SESSION_CLIENT_TZ_LABEL
+        try:
+            pet_mod._SESSION_CLIENT_TZ = None
+            pet_mod._SESSION_CLIENT_TZ_LABEL = ""
+
+            # 1. Explicit non-local timezones keep standard clock_snapshot behavior
+            ts = 1795738800.0  # 2026-11-27 00:20:00 UTC == 2026-11-26 19:20:00 EST (-05:00)
+            utc_snap = pet_mod._desktop_clock_snapshot(timezone_name="UTC", now=ts)
+            self.assertEqual(utc_snap["utc_offset"], "+00:00")
+            self.assertEqual(utc_snap["date"], "2026-11-27")
+            sh_snap = pet_mod._desktop_clock_snapshot(timezone_name="Asia/Shanghai", now=ts)
+            self.assertEqual(sh_snap["utc_offset"], "+08:00")
+            self.assertEqual(sh_snap["date"], "2026-11-27")
+            self.assertEqual(sh_snap["time"], "08:20:00")
+
+            # 2. Without client_time or TZ on a UTC Linux host, falls back to America/New_York
+            with patch.dict("os.environ", {}, clear=False):
+                import os
+                os.environ.pop("TZ", None)
+                ny_snap = pet_mod._desktop_clock_snapshot(req={}, now=ts)
+            self.assertEqual(ny_snap["source"], "server_tz")
+            self.assertEqual(ny_snap["utc_offset"], "-05:00")
+            self.assertEqual(ny_snap["date"], "2026-11-26")
+            self.assertEqual(ny_snap["time"], "19:20:00")
+
+            # 3. Stale client_time (>300s drift) is ignored
+            stale_req = {
+                "client_time": {
+                    "date": "2026-11-27",
+                    "time": "09:20:00",
+                    "weekday": "星期五",
+                    "utc_offset": "+09:00",
+                    "unix_seconds": int(ts) - 600,
+                }
+            }
+            stale_res = pet_mod._desktop_clock_snapshot(req=stale_req, now=ts)
+            self.assertEqual(stale_res["source"], "server_tz")
+            self.assertIsNone(pet_mod._SESSION_CLIENT_TZ)
+
+            # 4. Fresh client_time is honored and cached for subsequent local time_now lookups
+            fresh_req = {
+                "client_time": {
+                    "datetime": "2026-11-27T09:20:00+09:00",
+                    "date": "2026-11-27",
+                    "time": "09:20:00",
+                    "weekday": "星期五",
+                    "timezone_label": "本机时区 JST UTC+09:00",
+                    "utc_offset": "+09:00",
+                    "unix_seconds": int(ts),
+                }
+            }
+            fresh_res = pet_mod._desktop_clock_snapshot(req=fresh_req, now=ts)
+            self.assertEqual(fresh_res["source"], "client_clock")
+            self.assertEqual(fresh_res["utc_offset"], "+09:00")
+            self.assertEqual(fresh_res["time"], "09:20:00")
+
+            # Subsequent server fallback / time_now("local") reuses cached +09:00 offset
+            cached_res = pet_mod._desktop_clock_snapshot(req=None, now=ts + 65)
+            self.assertEqual(cached_res["source"], "server_tz")
+            self.assertEqual(cached_res["utc_offset"], "+09:00")
+            self.assertEqual(cached_res["time"], "09:21:05")
+            self.assertEqual(cached_res["timezone_label"], "本机时区 JST UTC+09:00")
+        finally:
+            pet_mod._SESSION_CLIENT_TZ = orig_tz
+            pet_mod._SESSION_CLIENT_TZ_LABEL = orig_lbl
+
+
 if __name__ == "__main__":
     unittest.main()
