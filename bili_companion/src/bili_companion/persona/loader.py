@@ -33,17 +33,27 @@ class PersonaLoader:
         self.max_characters = max_characters
         self.memory_characters = memory_characters
 
-    def live_room_note(self, room_id):
-        """Only the observation note for this room may enter a media request."""
+    def _live_room(self, room_id):
         path = self.persona_dir.parent / "private" / "persona" / "regular_live_room.json"
         try:
             profile = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            return ""
-        if not isinstance(profile, dict) or profile.get("room_id") != room_id:
-            return ""
-        note = profile.get("observation_note")
-        return note.strip() if isinstance(note, str) and len(note) <= 1000 else ""
+            return {}
+        return profile if isinstance(profile, dict) and profile.get("room_id") == room_id else {}
+
+    @staticmethod
+    def _bounded(value, limit=1000):
+        return value.strip() if isinstance(value, str) and len(value) <= limit else ""
+
+    def live_room_note(self, room_id):
+        """Only the observation note for this room may enter a media request."""
+        return self._bounded(self._live_room(room_id).get("observation_note"))
+
+    def live_host(self, room_id):
+        """Who hosts this room and how Hakimi knows them; never account identifiers."""
+        room = self._live_room(room_id)
+        name, profile = self._bounded(room.get("host_name"), 20), self._bounded(room.get("host_profile"))
+        return dict(name=name, profile=profile) if name and profile else {}
 
     def load(self, bridge_memories: Sequence[Mapping] = ()) -> PersonaBundle:
         core = (self.persona_dir / "hakimi_core.md").read_text(encoding="utf-8").strip()

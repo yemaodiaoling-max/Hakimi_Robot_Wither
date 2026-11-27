@@ -112,6 +112,77 @@ class SinglePassTests(unittest.TestCase):
                 self.assertEqual(result.live_decision_status,status)
                 with self.db.connect(write=True) as db:db.execute('DELETE FROM cognition_decisions')
 
+    def host_loader(self):
+        from bili_companion.persona import PersonaLoader
+        persona_dir = self.root / 'personas'
+        persona_dir.mkdir()
+        for filename in ('hakimi_core.md', 'bilibili_overlay.md'):
+            (persona_dir / filename).write_text('fixture', encoding='utf-8')
+        path = self.root / 'private' / 'persona' / 'regular_live_room.json'
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(dict(room_id='room', host_name='小鹿', qq_official_id='private-account',
+            observation_note='fixture-note', host_profile='fixture-host-profile')), encoding='utf-8')
+        return PersonaLoader(persona_dir)
+
+    def remember(self, session, note, *, at):
+        """A remembered live session, as the memory bridge leaves it."""
+        from bili_companion.domain import Evidence
+        from bili_companion.memory.store import live_note_id
+        import uuid
+        identity = uuid.uuid4().hex
+        self.memory.append(Evidence(identity, self.scope, session, '主播说了一句话', at, 0, 1, 'audio', 'observation', .9))
+        self.memory.revise(self.scope, note, [identity], note_id=live_note_id(self.scope.key(), session))
+
+    def request_data(self, client, index=0):
+        return json.loads(client.requests[index][1]['contents'][0]['parts'][1]['text'])
+
+    def test_live_prompt_carries_host_last_stream_and_own_lines(self):
+        self.remember('last-week', '上周在小鹿的直播间：她说要去吃猪脚饭', at=self.now-7*86400)
+        self.remember('yesterday', '昨天在小鹿的直播间：连败还被偷家', at=self.now-86400)
+        self.remember('session', '本场的笔记', at=self.now-30)
+        engine, client = self.unified([self.live_response()], persona_loader=self.host_loader())
+        own = [dict(text='早饭记得吃', at=self.now-300), dict(text='太久以前的', at=self.now-200000)]
+        engine.observe(self.chunk, self.scope, 3, own_recent_danmaku=own,
+            live_context=[dict(text='早饭记得吃', observed_at=self.now-5), dict(text='主播加油', observed_at=self.now-4)])
+        data = self.request_data(client)
+        instruction = client.requests[0][1]['systemInstruction']['parts'][0]['text']
+        self.assertEqual(data['host'], dict(name='小鹿', profile='fixture-host-profile'))
+        # Earlier sessions, newest first; the current session's own note is not a memory yet.
+        self.assertEqual(data['room_memories'], ['昨天在小鹿的直播间：连败还被偷家', '上周在小鹿的直播间：她说要去吃猪脚饭'])
+        self.assertEqual(data['my_recent_danmaku'], [dict(text='早饭记得吃', minutes_ago=5)])
+        # Her own line in the public history is not offered back as viewer chat.
+        self.assertEqual([item['text'] for item in data['recent_public_danmaku_untrusted']], ['主播加油'])
+        self.assertIn('不是画面解说', instruction)
+        self.assertIn('host是你对这个直播间主播的了解', instruction)
+        self.assertNotIn('private-account', json.dumps(client.requests[0][1], ensure_ascii=False))
+
+    def test_other_rooms_get_no_host_profile(self):
+        self.chunk.target_id = 'another'
+        engine, client = self.unified([self.live_response()], persona_loader=self.host_loader())
+        engine.observe(self.chunk, Scope('a', 'live_room', 'another'), 3)
+        payload = json.dumps(client.requests[0][1], ensure_ascii=False)
+        self.assertNotIn('fixture-host-profile', payload)
+        self.assertNotIn('host是你对这个直播间主播的了解', payload)
+
+    def test_reworded_repeat_is_dropped_without_consuming_interval(self):
+        repeat = dict(observed(), live_feedback=dict(speak=True, text='这段钢琴真好听', evidence_indices=[0]))
+        engine, _ = self.unified([response(repeat), self.live_response()])
+        own = [dict(text='这段钢琴好听呀', at=self.now-120)]
+        first = engine.observe(self.chunk, self.scope, 3, own_recent_danmaku=own)
+        self.assertIsNone(first.candidate)
+        self.assertEqual(first.live_decision_status, 'repetitive')
+        second = engine.observe(self.chunk, self.scope, 3, own_recent_danmaku=[dict(text='早饭记得吃', at=self.now-120)])
+        self.assertEqual(second.live_decision_status, 'ready')
+
+    def test_repeat_check_matches_the_observed_failure(self):
+        from bili_companion.cognition.live import _repeats
+        own = [dict(text=t) for t in ('这波技能全往中路砸了', '基地门口这波还要硬接啊', '早饭没吃就先补两口，别硬扛')]
+        self.assertTrue(_repeats('中路这波技能全砸一块了', own))
+        self.assertTrue(_repeats('基地门口这波人也太齐了', own))
+        self.assertFalse(_repeats('小鹿今天这把我站你这边', own))
+        self.assertTrue(_repeats('这波又输了', [dict(text='这波不亏'), dict(text='这波稳了')]))
+        self.assertFalse(_repeats('猪脚饭给我留一块', []))
+
     def test_single_pass_cannot_enable_child_calls(self):
         with self.assertRaises(ValueError):
             self.unified([], child_roles_enabled=True)

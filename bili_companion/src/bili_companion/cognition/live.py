@@ -23,6 +23,60 @@ from .gateway import CognitionUnavailable
 OBSERVER = 'gemini-3.5-flash-lite'
 DECIDER = 'gemini-3.8-flash'
 
+# The danmaku is a viewer talking to people, not a caption: everyone in the room
+# already sees the frame, so the reaction must carry something the frame does not.
+LIVE_FEEDBACK_INSTRUCTION = (
+    '\n额外返回live_feedback={"speak":false,"text":"","evidence_indices":[]}。'
+    'live_feedback是你作为常驻观众发的一条弹幕，是对人说话，不是画面解说。主播和观众都看得见画面，'
+    '禁止复述或描写画面本身：技能特效、走位、兵线、界面、倒计时、比分、谁在哪条路'
+    '（反例：“这波技能全往中路砸了”“这团蓝色技能圈铺得挺满”“倒计时归零了，阵容还在换人”）。'
+    '值得开口的依次是：接主播刚说的话；接观众弹幕的梗、回答弹幕里的问题；'
+    '对输赢、失误、高光或主播状态表态——吐槽、捧场、调侃、关心。'
+    '像熟人随口一句，带你自己的看法或情绪，最多30字。'
+    '示意语气（不要照抄）：主播说要去吃猪脚饭→“猪脚饭记得给我留一块”；'
+    '主播问“你觉得我能打吗”→“能打，就是队友不太能”；连输两把→“今天这水逆我先替你记下了”。'
+    'evidence_indices引用触发这句话的事件即可，正文不复述该事件。'
+    '对照my_recent_danmaku：不重复自己说过的意思、梗和句式，不老用同一个开头（如“这波”）。'
+    '想说的只剩画面描述、没有态度可表达，就speak=false。'
+    'speak=true必须给出本次依据；引用视听事件用evidence_indices，'
+    '若有近期弹幕，接话可仅给chat_indices并将evidence_indices置空。'
+    'expression_enabled=false必须speak=false。')
+
+LIVE_HOST_INSTRUCTION = (
+    '\nhost是你对这个直播间主播的了解，是私人背景，只用来把握关系和语气。'
+    '片段里能确认是host本人在播时，像熟悉的朋友那样直接和她说话：可以叫她名字、接她的话、捧场、关心或调侃，'
+    '不必每条都点名；拿不准是谁在播就称主播或不点名。'
+    '不在弹幕里透露账号、群号、私聊内容和别人的私事，熟梗只用host里写明的。')
+
+
+def _own_danmaku(items, now, *, limit=8, window=86400):
+    """Hakimi's own recent lines, as text the model can compare against."""
+    result = []
+    for item in (items if type(items) in (list, tuple) else ())[-limit:]:
+        if (type(item) is dict and type(item.get('text')) is str and 1 <= len(item['text']) <= 30
+                and not any(ord(c) < 32 for c in item['text'])
+                and type(item.get('at')) in (int, float) and math.isfinite(item['at'])
+                and 0 <= now-item['at'] <= window):
+            result.append(dict(text=item['text'], minutes_ago=int((now-item['at'])//60)))
+    return result
+
+
+def _bigrams(text):
+    text = re.sub(r'[\s\W_]+', '', text)
+    return {text[i:i+2] for i in range(len(text)-1)}
+
+
+def _repeats(text, own):
+    """Same joke reworded, or a third line in a row opening the same way."""
+    grams = _bigrams(text)
+    for item in own:
+        other = _bigrams(item['text'])
+        if text == item['text'] or (len(grams) >= 3 and len(other) >= 3
+                and len(grams & other) / min(len(grams), len(other)) >= .5):
+            return True
+    recent = [item['text'][:2] for item in own[-3:]]
+    return len(text) >= 2 and recent.count(text[:2]) >= 2
+
 
 class BudgetPaused(RuntimeError):
     pass
@@ -366,7 +420,8 @@ class CognitionEngine:
         from .video import select_video
         return select_video(self,candidates,recent_video_history)
 
-    def observe(self, chunk, scope, watch_epoch, *, allow_decision=True, video_context=None, recent_video_history=(), live_context=()):
+    def observe(self, chunk, scope, watch_epoch, *, allow_decision=True, video_context=None, recent_video_history=(),
+                live_context=(), own_recent_danmaku=()):
         finite(chunk.start)
         finite(chunk.end)
         finite(chunk.received_at)
@@ -407,9 +462,12 @@ class CognitionEngine:
                     '%Y-%m-%d %H:%M:%S').replace(tzinfo=ZoneInfo('Asia/Shanghai')).timestamp()
             except (ValueError, IndexError):
                 pass
+        own = _own_danmaku(own_recent_danmaku, self.clock()) if scope.kind == 'live_room' else []
         if scope.kind == 'live_room' and self.single_pass:
+            mine = {item['text'] for item in own}
             for item in (live_context if type(live_context) in (list, tuple) else ())[:6]:
-                if (type(item) is dict and type(item.get('text')) is str
+                # Public history also carries Hakimi's own lines; never reply to herself.
+                if (type(item) is dict and type(item.get('text')) is str and item['text'] not in mine
                         and 1 <= len(item['text']) <= 100
                         and not any(ord(c) < 32 for c in item['text'])
                         and not re.search(r'https?://|www\.|@|[0-9]{5,}', item['text'], re.I)
@@ -434,17 +492,22 @@ class CognitionEngine:
                 # Observation pacing already bounds failed calls. Only a valid,
                 # fresh decision consumes the ordinary expression interval.
                 expression_enabled=bool(allow_decision and self._decision_due(scope, record=False, session=chunk.session_id))
-                instruction+='\n'+bundle.system_instruction+(
-                    '\n额外返回live_feedback={"speak":false,"text":"","evidence_indices":[]}。'
-                    '有具体画面转折、刚聊到的话题或可接的话，就直接用最多30字中文短句自然接话；'
-                    '例如{"speak":true,"text":"这一下接得漂亮","evidence_indices":[0]}，内容必须符合实际依据。'
-                    '不重复问候，没具体内容或不确定再安静。'
-                    'speak=true必须给出本次依据；引用视听事件用evidence_indices，'
-                    '若有近期弹幕，接话可仅给chat_indices并将evidence_indices置空。'
-                    'expression_enabled=false必须speak=false。')
+                instruction+='\n'+bundle.system_instruction+LIVE_FEEDBACK_INSTRUCTION
                 data.update(expression_enabled=expression_enabled,
-                    bridge_memory_data=json.loads(bundle.memory_data),
-                    local_memory_data=self.memory.recall(scope,'',budget=600))
+                    bridge_memory_data=json.loads(bundle.memory_data))
+                host = self.persona.live_host(scope.identity)
+                if host:
+                    data['host'] = host
+                    instruction += LIVE_HOST_INSTRUCTION
+                reader = getattr(self.memory, 'live_memories', None)
+                remembered = reader(scope, chunk.session_id) if reader else []
+                if remembered:
+                    data['room_memories'] = remembered
+                    instruction += ('\nroom_memories是你以前在这个直播间看直播攒下的记忆，新的在前，久了会忘。'
+                        '可以偶尔像老朋友那样自然提起（接着上次的话题、记得她上次说过或输过什么），'
+                        '只用其中写到的事，不编造，也不每条都翻旧账。')
+                if own:
+                    data['my_recent_danmaku'] = own
         if self.child_roles_enabled:
             instruction+=('\n你是统筹智能体。优先在本次输出复用观察、记忆与表达，额外工作才请求一次程序子代理。'
                 '额外可选字段child_request=null或{"role":"expression|memory","reason":"最多80字",'
@@ -563,7 +626,11 @@ class CognitionEngine:
                 try:
                     feedback=value['live_feedback']
                     candidate=self._candidate(feedback,observation,scope,chunk.session_id,watch_epoch)
-                    if candidate is not None:decision_status='ready'
+                    if candidate is not None and _repeats(candidate.text, own):
+                        # Not a fresh decision: the next observation may still speak.
+                        candidate=None
+                        decision_status='repetitive'
+                    elif candidate is not None:decision_status='ready'
                     elif feedback['speak'] is False:decision_status='model_silent'
                     else:
                         cited=[observation.evidence[i] for i in feedback['evidence_indices']]

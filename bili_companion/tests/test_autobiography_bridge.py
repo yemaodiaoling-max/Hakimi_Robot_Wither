@@ -244,6 +244,83 @@ class AutobiographyBridgeTests(unittest.TestCase):
             out_ids = {r[0] for r in db.execute("SELECT packet_id FROM sync_outbox").fetchall()}
             self.assertEqual(out_ids, {"pkt_live"})
 
+    def live_session(self, session, at, *, lines=(), danmaku=()):
+        scope = Scope("hakimi-bilibili", "live_room", "8729095131")
+        for index, (text, confidence) in enumerate(lines):
+            self.memory.append(Evidence(f"{session}-a{index}", scope, session, text, at + index * 60,
+                                        0, 30, "audio", "observation", confidence))
+        self.memory.append(Evidence(f"{session}-v", scope, session, "画面显示技能特效", at, 0, 30, "video", "observation"))
+        with self.watcher_db.connect(write=True) as db:
+            for index, text in enumerate(danmaku):
+                db.execute("INSERT INTO danmaku_attempts VALUES (?,?,?,?,?,?,?)",
+                    ("hakimi-bilibili", "8729095131", session, f"{session}-d{index}", text, at + index, "sent"))
+        return scope
+
+    def notes(self):
+        with self.memory.database.connect() as db:
+            return {r["id"]: r["text"] for r in db.execute("SELECT id, text FROM notes WHERE id LIKE 'live-session:%'")}
+
+    def test_live_notes_accumulate_per_session_and_forget_on_the_live_tier(self):
+        from bili_companion.integrations.autobiography import (
+            LIVE_HIGH_TTL_SECONDS, LIVE_NORMAL_TTL_SECONDS, refresh_live_notes)
+        from bili_companion.memory.store import live_note_id
+        host = lambda room: "小鹿" if room == "8729095131" else ""
+        scope = self.live_session("8729095131:2026-11-26 20:10:44", self.now - 86400,
+            lines=[("主播说：“我去吃猪脚饭。”", .9), ("主播含混说了一句", .4), ("背景播放女声流行歌曲", .9),
+                   ("可辨游戏语音“全军出击”", .9)],
+            danmaku=["猪脚饭给我留一块", "能打，就是队友不太能"])
+        self.live_session("8729095131:2026-11-20 10:00:00", self.now - 7 * 86400,
+            lines=[("女主播吐槽连败还被偷家", .9)])
+        self.live_session("8729095131:2026-11-01 10:00:00", self.now - 20 * 86400,
+            lines=[("很久以前随口一句", .9)])
+
+        stats = refresh_live_notes(self.native_path, self.watcher_path, now=self.now, host_name=host)
+        notes = self.notes()
+        # The 20-day-old session with no interaction is already past the 14-day tier.
+        self.assertEqual(stats, {"written": 2, "forgotten": 0})
+        recent = notes[live_note_id(scope.key(), "8729095131:2026-11-26 20:10:44")]
+        # Only what the host clearly said: no unsure lines, soundtrack, game voice or frame captions,
+        # and not Hakimi's own danmaku.
+        self.assertEqual(recent, "11月26日晚上在小鹿的直播间：主播说：“我去吃猪脚饭。”")
+        # Unchanged sessions are not rewritten.
+        self.assertEqual(refresh_live_notes(self.native_path, self.watcher_path, now=self.now, host_name=host)["written"], 0)
+        self.assertEqual(self.memory.live_memories(scope, "8729095131:2026-11-27 10:00:00"),
+            [recent, "11月20日早上在小鹿的直播间：女主播吐槽连败还被偷家"])
+
+        # The episode QQ ingests is the remembered note, tagged with the host.
+        episodes = build_autobiography_episodes(self.native_path, self.watcher_path, now=self.now, host_name=host)
+        live = [ep for ep in episodes if "11月26日" in ep["text"]]
+        self.assertEqual(len(live), 1)
+        self.assertIn("小鹿", live[0]["topics"])
+        self.assertIn("我去吃猪脚饭", live[0]["text"])
+        self.assertIn("我发了弹幕「能打，就是队友不太能 / 猪脚饭给我留一块」", live[0]["text"])
+        self.assertEqual(live[0]["importance"], "high")
+
+        # Forgetting: past its normal tier the quiet session goes; the one she talked in stays to 45 days.
+        later = self.now - 7 * 86400 + LIVE_NORMAL_TTL_SECONDS + 60
+        stats = refresh_live_notes(self.native_path, self.watcher_path, now=later, host_name=host)
+        self.assertEqual(stats["forgotten"], 1)
+        self.assertEqual(list(self.notes().values()), [recent])
+        much_later = self.now - 86400 + LIVE_HIGH_TTL_SECONDS + 600
+        refresh_live_notes(self.native_path, self.watcher_path, now=much_later, host_name=host)
+        self.assertEqual(self.notes(), {})
+
+    def test_count_cap_keeps_evidence_a_remembered_note_cites(self):
+        from bili_companion.integrations.autobiography import refresh_live_notes
+        self.live_session("8729095131:2026-11-20 10:00:00", self.now - 7 * 86400,
+            lines=[("女主播吐槽连败还被偷家", .9)])
+        refresh_live_notes(self.native_path, self.watcher_path, now=self.now)
+        filler = Scope("hakimi-bilibili", "video", "BV1Filler0001")
+        for index in range(120):
+            self.memory.append(Evidence(f"fill{index}", filler, "f", "较新的视频证据", self.now - 3600 + index, 0, 10, "video", "observation"))
+        stats = prune_bili_databases(self.native_path, self.watcher_path, None, now=self.now, max_evidence=100)
+        self.assertGreater(stats["deleted_overflow_evidence"], 0)
+        with self.memory.database.connect() as db:
+            ids = {r[0] for r in db.execute("SELECT id FROM evidence")}
+        self.assertIn("8729095131:2026-11-20 10:00:00-a0", ids)
+        self.assertNotIn("8729095131:2026-11-20 10:00:00-v", ids)
+        self.assertEqual(len(self.notes()), 1)
+
     def test_tick_with_autobiography_and_presence_without_legacy_snapshot(self):
         with self.watcher_db.connect(write=True) as db:
             db.execute(

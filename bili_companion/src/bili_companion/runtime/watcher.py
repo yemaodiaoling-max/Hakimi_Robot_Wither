@@ -487,6 +487,12 @@ class Watcher:
                     # Public history is optional: its failure must not interrupt
                     # media observation or expose upstream response contents.
                     self.log('live_chat_unavailable', epoch=epoch)
+            if s['live_session']:
+                try:
+                    extra['own_recent_danmaku'] = await asyncio.to_thread(
+                        self.executor.recent, self.account, self.room)
+                except Exception:
+                    self.log('own_danmaku_unavailable', epoch=epoch)
             attempted_observation=True
             result=await self.fenced(self.engine.observe,chunk,scope,epoch,
                 allow_decision=bool(self.decision_enabled if s['live_session'] else self.config.get('comments_enabled',False)),epoch=epoch,**extra)

@@ -116,6 +116,22 @@ class WatcherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.watcher.step(), 'observed')
         self.assertIsNone(captured[-1])
 
+    async def test_live_observation_sees_own_recent_danmaku(self):
+        self.live(True)
+        with self.watcher.executor.database.connect(write=True) as db:
+            db.execute("INSERT INTO danmaku_attempts VALUES (?,?,?,?,?,?,?)",
+                (self.watcher.account, self.watcher.room, 'older-session', 'k1', '上次那句', self.now-600, 'sent'))
+            db.execute("INSERT INTO danmaku_attempts VALUES (?,?,?,?,?,?,?)",
+                (self.watcher.account, self.watcher.room, 'older-session', 'k2', '被拒的那句', self.now-500, 'rejected'))
+        original = self.engine.observe
+        captured = []
+        def observe(*args, **kwargs):
+            captured.append(kwargs.get('own_recent_danmaku'))
+            return original(*args, **kwargs)
+        self.engine.observe = observe
+        self.assertEqual(await self.watcher.step(), 'observed')
+        self.assertEqual([item['text'] for item in captured[-1]], ['上次那句'])
+
     async def test_real_fake_loop_observation_preemption_double_offline_resume(self):
         self.assertEqual(await self.watcher.step(),'selecting')
         self.assertEqual(await self.watcher.step(),'observed')

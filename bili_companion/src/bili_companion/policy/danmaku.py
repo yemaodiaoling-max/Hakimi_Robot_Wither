@@ -11,6 +11,14 @@ class ActionExecutor:
                 account TEXT, room TEXT, session TEXT, dedup TEXT, text TEXT,
                 at REAL, state TEXT, PRIMARY KEY(account,room,session,dedup))""")
 
+    def recent(self, account_id, room_id, *, limit=8):
+        """Hakimi's own latest danmaku in this room, newest last, across sessions."""
+        with self.database.connect() as db:
+            rows = db.execute("""SELECT text, at FROM danmaku_attempts WHERE account=? AND room=?
+                AND state IN ('sent','preview','dispatching','unknown') ORDER BY at DESC LIMIT ?""",
+                (account_id, room_id, max(1, min(20, int(limit))))).fetchall()
+        return [dict(text=row['text'], at=row['at']) for row in reversed(rows)]
+
     def preview(self, candidate, current, *, account_id, watch_epoch, now, authenticated=True):
         if not self.config.get('dry_run', True):
             return 'sender_not_implemented'

@@ -88,6 +88,12 @@ def write_snapshot(store, path):
     return len(records)
 
 
+def _host_name(room_id):
+    """The configured regular room's host name; any other room stays unnamed."""
+    from bili_companion.persona import PersonaLoader
+    return PersonaLoader().live_host(room_id).get('name', '')
+
+
 def tick(config, *, force=False, clock=time.time, rng=None):
     state = Path(config['state_dir'])
     qq = SyncStore(Database(state/'qq_bridge.sqlite3'), endpoint='qq',
@@ -140,6 +146,12 @@ def tick(config, *, force=False, clock=time.time, rng=None):
         outbound_bili = {'state': 'skipped_autobiography', 'sent': 0}
         count = 0
 
+    live_notes = None
+    if native and config.get('watcher_database'):
+        from .autobiography import refresh_live_notes
+        live_notes = refresh_live_notes(native, config['watcher_database'],
+            account_id=config['bilibili_account_id'], now=clock(), host_name=_host_name)
+
     autobiography_episodes = 0
     if config.get('autobiography_snapshot') and native and config.get('watcher_database'):
         from .autobiography import build_autobiography_episodes, write_autobiography_snapshot
@@ -148,6 +160,7 @@ def tick(config, *, force=False, clock=time.time, rng=None):
             config['watcher_database'],
             account_id=config['bilibili_account_id'],
             now=clock(),
+            host_name=_host_name,
         )
         autobiography_episodes = write_autobiography_snapshot(
             episodes,
@@ -181,6 +194,7 @@ def tick(config, *, force=False, clock=time.time, rng=None):
             prune_marker.write_text(json.dumps({'last_at': clock()}), encoding='utf-8')
 
     return {'qq':outbound_qq,'bilibili':outbound_bili,'qq_context_records':count,
+            'live_notes':live_notes,
             'autobiography_episodes':autobiography_episodes,'presence_updated':presence_updated,
             'compression':'deterministic','model_calls':0}
 

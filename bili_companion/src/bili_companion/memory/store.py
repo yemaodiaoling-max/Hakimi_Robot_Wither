@@ -15,6 +15,15 @@ def terms(text):
         [chunk[i:i+2] for i in range(len(chunk)-1)])}
 
 
+LIVE_NOTE_PREFIX = 'live-session:'
+
+
+def live_note_id(scope_key, session_id):
+    """One stable note per live session, shared by the bridge and the watcher."""
+    digest = hashlib.sha256(json.dumps([scope_key, session_id], ensure_ascii=False).encode()).hexdigest()
+    return LIVE_NOTE_PREFIX + digest[:24]
+
+
 class MemoryStore:
     def __init__(self, database):
         self.database = database
@@ -73,6 +82,27 @@ class MemoryStore:
             if len(result) >= min(4, max(1, limit)):
                 break
         return result
+
+    def live_memories(self, scope, current_session, *, limit=3):
+        """Remembered earlier live sessions of this room, newest first.
+
+        Each is a per-session note the memory bridge keeps while the session is
+        remembered; forgetting deletes the note, so this never outlives it.
+        """
+        current = live_note_id(scope.key(), current_session)
+        dated = []
+        with self.database.connect() as db:
+            rows = db.execute("SELECT id,text,evidence_ids FROM notes WHERE scope=? AND id LIKE ?",
+                              (scope.key(), LIVE_NOTE_PREFIX + '%')).fetchall()
+            for row in rows:
+                ids = json.loads(row['evidence_ids'] or '[]')
+                if row['id'] == current or not ids:
+                    continue
+                marks = ','.join('?' for _ in ids)
+                last = db.execute(f"SELECT MAX(observed) FROM evidence WHERE id IN ({marks})", ids).fetchone()[0]
+                if last is not None:
+                    dated.append((last, row['text']))
+        return [text for _, text in sorted(dated, reverse=True)[:max(1, limit)]]
 
     def revise(self, scope, text, evidence_ids, *, note_id=None, expected_revision=0):
         if not text.strip() or not evidence_ids or len(text) > 8000:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import closing
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ import sqlite3
 import tempfile
 import time
 
+from bili_companion.memory.store import LIVE_NOTE_PREFIX, live_note_id
 from bili_companion.runtime.storage import Database
 from bili_companion.sync.types import SENSITIVE, canonical
 
@@ -22,6 +24,10 @@ LIVE_HIGH_TTL_SECONDS = 45 * 86400
 LIVE_NORMAL_TTL_SECONDS = 14 * 86400
 
 _EVIDENCE_REF_RE = re.compile(r"\[[0-9,\s]+\]")
+# A remembered live line must be a person on the stream, not its soundtrack.
+_HOST_VOICE_RE = re.compile(r"主播|女声|男声")
+_BACKGROUND_SOUND_RE = re.compile(r"背景|音乐|歌曲|歌词|演唱|唱|音效|游戏语音|游戏内|游戏[男女]声|脚步声|系统|播报|无人声|"
+                                  r"未听到|钢琴|弦乐|旋律|伴奏|BGM", re.I)
 _TITLE_RE = re.compile(r"《([^《》\n]{1,64})》")
 _PLACEHOLDER_REASON_RE = re.compile(r"^恢复既有视频")
 _TOPIC_TOKEN_RE = re.compile(r"[A-Za-z0-9_]{2,18}|[\u4e00-\u9fff]{2,8}")
@@ -271,6 +277,119 @@ def _build_video_text(
     return f"{header}{reason_part}{trimmed_body}{comment_part}"[:220]
 
 
+def _host_for(host_name, room_id: str) -> str:
+    """Optional lookup of a room's host; failures leave the room unnamed."""
+    if host_name is None:
+        return ""
+    try:
+        return str(host_name(room_id) or "")[:20]
+    except Exception:
+        return ""
+
+
+def _session_label(session_id: str) -> str:
+    """'room:2026-11-26 20:10:44' (Shanghai time) -> '11月26日晚上'."""
+    try:
+        started = datetime.strptime(session_id.split(":", 1)[1], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, IndexError):
+        return ""
+    hour = started.hour
+    part = ("凌晨" if hour < 5 else "早上" if hour < 11 else "中午" if hour < 13
+            else "下午" if hour < 18 else "晚上")
+    return f"{started.month}月{started.day}日{part}"
+
+
+def refresh_live_notes(
+    native_db_path: str | Path,
+    watcher_db_path: str | Path | None,
+    *,
+    account_id: str = "hakimi-bilibili",
+    now: float | None = None,
+    host_name=None,
+) -> dict:
+    """Keep one remembered note per live session, and forget it on the live tier.
+
+    Deterministic, no model calls. A note holds what the host was clearly heard
+    saying; the cited evidence is what pruning keeps. Sessions past their tier
+    (longer when Hakimi spoke in them) lose the note, as their episodes do.
+    """
+    now = time.time() if now is None else float(now)
+    npath = Path(native_db_path)
+    stats = {"written": 0, "forgotten": 0}
+    if not npath.is_file():
+        return stats
+    spoken: dict[str, list[str]] = {}
+    if watcher_db_path and Path(watcher_db_path).is_file():
+        with closing(_readonly(watcher_db_path)) as wdb:
+            if wdb.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='danmaku_attempts'").fetchone():
+                for row in wdb.execute(
+                    "SELECT session, text FROM danmaku_attempts WHERE account=? AND state='sent' AND text!='' "
+                    "ORDER BY at ASC", (account_id,),
+                ).fetchall():
+                    spoken.setdefault(str(row["session"]), []).append(str(row["text"]).strip())
+    with Database(npath).connect(write=True) as db:
+        sessions: dict[tuple[str, str], list] = {}
+        for row in db.execute(
+            "SELECT id, scope, session, observed, text, payload FROM evidence "
+            "WHERE platform='bilibili' AND account=? AND scope LIKE '%\"live_room\"%' ORDER BY observed ASC",
+            (account_id,),
+        ).fetchall():
+            sessions.setdefault((str(row["scope"]), str(row["session"])), []).append(row)
+        existing = {str(r["id"]): r for r in db.execute(
+            "SELECT id, text, revision FROM notes WHERE id LIKE ?", (LIVE_NOTE_PREFIX + "%",)).fetchall()}
+        keep: set[str] = set()
+        for (scope_key, session_id), rows in sessions.items():
+            sent = spoken.get(session_id, [])
+            ttl = LIVE_HIGH_TTL_SECONDS if len(sent) >= 2 else LIVE_NORMAL_TTL_SECONDS
+            if float(rows[-1]["observed"] or 0) + ttl <= now:
+                continue  # forgotten on the same tier as its episode
+            heard: list[tuple[str, str]] = []
+            for row in rows:
+                try:
+                    payload = json.loads(row["payload"])
+                except (ValueError, TypeError):
+                    continue
+                if (payload.get("modality") != "audio" or payload.get("attribution") != "observation"
+                        or float(payload.get("confidence") or 0) < .75):
+                    continue
+                text = _clean_text_lines(str(row["text"] or ""))
+                if not _HOST_VOICE_RE.search(text) or _BACKGROUND_SOUND_RE.search(text):
+                    continue  # songs, game voice lines and announcements are not about the host
+                text = text[:48].rstrip("，。； ")
+                if text and not SENSITIVE.search(text) and all(text != t for _, t in heard):
+                    heard.append((str(row["id"]), text))
+            if not heard:
+                continue
+            if len(heard) > 4:  # spread over the whole stream, not just its opening
+                heard = [heard[round(i * (len(heard) - 1) / 3)] for i in range(4)]
+            try:
+                room_id = str(json.loads(scope_key)[3])
+            except (ValueError, TypeError, IndexError):
+                continue
+            host = _host_for(host_name, room_id)
+            place = f"{host}的直播间" if host else f"直播间{room_id}"
+            # What the host said, not Hakimi's own lines: the live prompt already
+            # shows those, and older ones would teach the captioning habit back.
+            text = (f"{_session_label(session_id)}在{place}：" + "；".join(t for _, t in heard))[:210]
+            if SENSITIVE.search(text):
+                continue
+            note_id = live_note_id(scope_key, session_id)
+            keep.add(note_id)
+            old = existing.get(note_id)
+            if old is not None and old["text"] == text:
+                continue
+            db.execute("INSERT OR REPLACE INTO notes VALUES (?,?,?,?,?,?)", (
+                note_id, scope_key, text, json.dumps([i for i, _ in heard]),
+                (int(old["revision"]) if old is not None else 0) + 1,
+                hashlib.sha256(text.encode("utf-8")).hexdigest()))
+            stats["written"] += 1
+        forgotten = [note_id for note_id in existing if note_id not in keep]
+        for note_id in forgotten:
+            db.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        stats["forgotten"] = len(forgotten)
+    return stats
+
+
 def build_autobiography_episodes(
     native_db_path: str | Path,
     watcher_db_path: str | Path,
@@ -278,6 +397,7 @@ def build_autobiography_episodes(
     account_id: str = "hakimi-bilibili",
     now: float | None = None,
     limit: int = DEFAULT_EPISODE_LIMIT,
+    host_name=None,
 ) -> list[dict]:
     """Condense native Bilibili watch records into bounded first-person episodes."""
     now = time.time() if now is None else float(now)
@@ -287,7 +407,7 @@ def build_autobiography_episodes(
         return []
 
     video_notes: dict[str, tuple[str, int]] = {}
-    live_notes: dict[tuple[str, str], str] = {}
+    live_notes: dict[str, str] = {}
     live_evidence_groups: dict[tuple[str, str], list[dict]] = {}
 
     if npath.is_file():
@@ -303,8 +423,8 @@ def build_autobiography_episodes(
                         continue
                     if sc[2] == "video":
                         video_notes[str(sc[3])] = (str(row["text"] or ""), int(row["revision"] or 1))
-                    elif sc[2] == "live_room":
-                        live_notes[(str(sc[3]), str(row["id"]))] = str(row["text"] or "")
+                    elif sc[2] == "live_room" and str(row["id"]).startswith(LIVE_NOTE_PREFIX):
+                        live_notes[str(row["id"])] = str(row["text"] or "")
             if "evidence" in ntables:
                 ev_rows = ndb.execute(
                     "SELECT scope, session, observed, text, payload FROM evidence "
@@ -444,28 +564,42 @@ def build_autobiography_episodes(
         if expires_at <= now:
             continue
 
-        snippets: list[str] = []
-        for it in items:
-            t = _clean_text_lines(it["text"])
-            if not t or SENSITIVE.search(t):
-                continue
-            if any(t == prev or (len(t) >= 10 and t in prev) for prev in snippets):
-                continue
-            snippets.append(t)
-            if len(snippets) >= 3:
-                break
-        body = "；".join(snippets)
-        if not body:
-            continue
         cov_label = _coverage_label(items)
-        danmaku_part = (
-            f"；发了弹幕「{' / '.join(d[:24] for d in sent_danmaku[:2])}」"
-            if sent_danmaku
-            else ""
-        )
-        header = f"[B站直播] 房间{room_id}({cov_label})："
-        max_body = max(24, 220 - len(header) - len(danmaku_part))
-        text = f"{header}{body[:max_body].rstrip('，； ')}{danmaku_part}"[:220]
+        note = live_notes.get(live_note_id(scope_json, session_id), "")
+        topics_base = ["B站", "直播", f"房间{room_id}"]
+        if note:
+            # The remembered note names the host and what she said.
+            body = note.split("：", 1)[-1]
+            host = _host_for(host_name, room_id)
+            if host:
+                topics_base.append(host)
+            danmaku_part = (f"；我发了弹幕「{' / '.join(d[:24] for d in sent_danmaku[:2])}」"
+                            if sent_danmaku else "")
+            header = f"[B站直播]({cov_label}) "
+            max_note = max(24, 220 - len(header) - len(danmaku_part))
+            text = f"{header}{note[:max_note]}{danmaku_part}"[:220]
+        else:
+            snippets: list[str] = []
+            for it in items:
+                t = _clean_text_lines(it["text"])
+                if not t or SENSITIVE.search(t):
+                    continue
+                if any(t == prev or (len(t) >= 10 and t in prev) for prev in snippets):
+                    continue
+                snippets.append(t)
+                if len(snippets) >= 3:
+                    break
+            body = "；".join(snippets)
+            if not body:
+                continue
+            danmaku_part = (
+                f"；发了弹幕「{' / '.join(d[:24] for d in sent_danmaku[:2])}」"
+                if sent_danmaku
+                else ""
+            )
+            header = f"[B站直播] 房间{room_id}({cov_label})："
+            max_body = max(24, 220 - len(header) - len(danmaku_part))
+            text = f"{header}{body[:max_body].rstrip('，； ')}{danmaku_part}"[:220]
         if SENSITIVE.search(text):
             continue
         sess_hash = hashlib.sha1(session_id.encode("utf-8")).hexdigest()[:8]
@@ -479,7 +613,7 @@ def build_autobiography_episodes(
             "text": text,
             "source": f"https://live.bilibili.com/{room_id}",
             "evidence": f"bilibili:live:{room_id}:session:{session_id[:48]} ({cov_label})",
-            "topics": _extract_topics(["B站", "直播", f"房间{room_id}"], "", body),
+            "topics": _extract_topics(topics_base, "", body),
             "occurred_at": occurred_at,
             "expires_at": expires_at,
             "importance": importance,
@@ -567,16 +701,26 @@ def prune_bili_databases(
                     db.execute(f"DELETE FROM evidence WHERE id IN ({marks})", batch)
                 stats["deleted_aged_evidence"] = len(to_delete)
 
+                # Evidence a remembered live note cites outlasts the count cap; it
+                # still ages out above, and the note is forgotten on its own tier.
+                remembered: set[str] = set()
+                if "notes" in tables:
+                    for nr in db.execute("SELECT evidence_ids FROM notes WHERE id LIKE ?",
+                                         (LIVE_NOTE_PREFIX + "%",)).fetchall():
+                        try:
+                            remembered.update(str(i) for i in json.loads(nr["evidence_ids"] or "[]"))
+                        except (ValueError, TypeError):
+                            continue
                 total = db.execute("SELECT COUNT(*) FROM evidence").fetchone()[0]
                 if total > max(100, int(max_evidence)):
                     excess = total - max(100, int(max_evidence))
                     cand_rows = db.execute(
                         "SELECT id, scope FROM evidence ORDER BY observed ASC, rowid ASC LIMIT ?",
-                        (excess * 2 + 200,),
+                        (excess * 2 + 200 + len(remembered),),
                     ).fetchall()
                     overflow_ids: list[str] = []
                     for r in cand_rows:
-                        if str(r["scope"]) in protected_scopes:
+                        if str(r["scope"]) in protected_scopes or str(r["id"]) in remembered:
                             continue
                         overflow_ids.append(r["id"])
                         if len(overflow_ids) >= excess:
