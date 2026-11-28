@@ -44,7 +44,12 @@ def error_details(exc):
     if type(exc).__name__=='MediaError' and str(exc) in {
         'already_started','cancelled','capture_failed','capture_or_probe_failed','capture_timeout',
         'invalid_interval','invalid_live_recorder','invalid_media_duration','live_start_failed',
-        'missing_audio_video','probe_failed'}:details['error_code']=str(exc)
+        'missing_audio_video','probe_failed','live_stalled','live_stream_ended','live_monitor_failed',
+        'stopped'}:details['error_code']=str(exc)
+    if type(exc).__name__=='TimeoutError' and str(exc)=='live_segment_timeout':
+        details['error_code']=str(exc)
+    reason=getattr(exc,'reason',None) if type(exc).__name__=='MediaError' else None
+    if type(reason) is str and re.fullmatch('[a-z0-9_]{1,40}',reason):details['media_reason']=reason
     return details
 
 
@@ -107,7 +112,7 @@ class Watcher:
         self.stop_event=asyncio.Event()
         self.wake_event=asyncio.Event()
         self.retired=set()
-        self.video_target=None; self.video_target_epoch=None
+        self.video_target=None; self.video_target_epoch=None; self.video_target_at=0
         self.decision_enabled=True
         self.recorder_skips=0
         self.video_failures={}
@@ -415,6 +420,7 @@ class Watcher:
             target=await self.fenced(self.platform.resolve_video,s['video']['bvid'],epoch=epoch)
             if target is STALE:return STALE
             self.video_target,self.video_target_epoch=target,epoch
+            self.video_target_at=self.clock()
             self.state.change(lambda current:current['video'].update(uploader_id=getattr(target,'uploader_id',''),
                 comment_coverage=[],comment_chunks=0) if current['watch_epoch']==epoch and current['video'] else None)
             target_title=str(getattr(target,'title','') or '')[:120]
@@ -424,13 +430,33 @@ class Watcher:
             if target.duration:
                 self.state.change(lambda current:current['video'].update(duration=target.duration,session_id=target.session_id)
                     if current['watch_epoch']==epoch and current['video'] else None)
+        elif self.clock()-self.video_target_at>self.config.get('video_target_max_age_seconds',600):
+            # Signed play URLs expire while budget pacing holds a video for hours.
+            if await self.refresh_video_target(s,epoch,'aged') is STALE:return STALE
         self.cancel_capture=threading.Event()
         duration=self.config.get('chunk_seconds',30)
         if self.video_target.duration:
             duration=min(duration,max(1,self.video_target.duration-s['video']['position']))
-        return await self.fenced(self.collector.capture,self.video_target,output,
+        capture=lambda:self.fenced(self.collector.capture,self.video_target,output,
             duration=duration,offset=s['video']['position'],
             cancel_event=self.cancel_capture,epoch=epoch)
+        try:
+            return await capture()
+        except Exception as exc:
+            if type(exc).__name__!='MediaError' or str(exc)!='capture_failed':raise
+            # One fresh URL and one retry before this counts as a video failure.
+            if await self.refresh_video_target(s,epoch,getattr(exc,'reason',None) or 'capture_failed') is STALE:
+                return STALE
+            return await capture()
+
+    async def refresh_video_target(self,s,epoch,reason):
+        """Re-resolve only the play URL; coverage and comment state stay as they are."""
+        age=self.clock()-self.video_target_at
+        target=await self.fenced(self.platform.resolve_video,s['video']['bvid'],epoch=epoch)
+        if target is STALE:return STALE
+        self.video_target,self.video_target_at=target,self.clock()
+        self.log('video_target_refreshed',reason=reason,age_seconds=round(age),epoch=epoch)
+        return target
 
     def static_skip(self,s,chunk,epoch,decision,seconds):
         """Book-keep a chunk the scene gate judged static and silent (no model call).

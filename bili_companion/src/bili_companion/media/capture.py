@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
+import re
 import subprocess
 import threading
 import time
@@ -10,7 +11,44 @@ import uuid
 
 
 class MediaError(Exception):
-    pass
+    """``str(exc)`` is the stable code; ``reason`` is an optional URL-free cause."""
+    def __init__(self, code, reason=None):
+        super().__init__(code)
+        self.reason = reason
+
+
+_HTTP = re.compile(r"(?:Server returned|HTTP error)\s+(\d{3})")
+_REASONS = (
+    (re.compile(r"Connection refused", re.I), "connection_refused"),
+    (re.compile(r"Connection reset|Broken pipe", re.I), "connection_reset"),
+    (re.compile(r"timed out", re.I), "network_timeout"),
+    (re.compile(r"Invalid data found", re.I), "invalid_data"),
+    (re.compile(r"matches no streams|does not contain any stream", re.I), "no_stream"),
+    (re.compile(r"Input/output error|I/O error", re.I), "io_error"),
+    (re.compile(r"End of file|\bEOF\b", re.I), "end_of_file"),
+)
+
+
+def ffmpeg_reason(stderr_tail):
+    """Classify ffmpeg's error output into a short code; never returns URLs or text."""
+    text = str(stderr_tail or "")
+    match = _HTTP.search(text)
+    if match:
+        return "http_" + match.group(1)
+    for pattern, code in _REASONS:
+        if pattern.search(text):
+            return code
+    return "unknown" if text.strip() else "no_output"
+
+
+def _tail(path, limit=4096):
+    try:
+        with open(path, "rb") as stream:
+            stream.seek(0, 2)
+            stream.seek(max(0, stream.tell() - limit))
+            return stream.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
 
 
 @dataclass(frozen=True)
@@ -51,9 +89,13 @@ class MediaCollector:
                  "-ar", "16000", "-b:a", "32k", "-movflags", "+faststart", "-y", str(output)]
         started = self.clock()
         proc = None
+        log = output.with_suffix(".log")
         try:
-            proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            # stderr goes to a private file so a failure can be classified; it
+            # may contain signed URLs, so only ffmpeg_reason's code leaves here.
+            with open(log, "wb") as errors:
+                proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                        stderr=errors, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             deadline = time.monotonic()+duration+35
             while proc.poll() is None:
                 if cancel_event is not None and cancel_event.is_set():
@@ -62,7 +104,7 @@ class MediaCollector:
                     raise MediaError("capture_timeout")
                 time.sleep(.1)
             if proc.returncode:
-                raise MediaError("capture_failed")
+                raise MediaError("capture_failed", ffmpeg_reason(_tail(log)))
             probe = subprocess.run([self.ffprobe, "-v", "error", "-show_entries", "format=duration:stream=codec_type,duration",
                                     "-of", "json", str(output)], capture_output=True, timeout=10,
                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -91,6 +133,7 @@ class MediaCollector:
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait(timeout=3)
+            log.unlink(missing_ok=True)
 
 
 class LiveRecorder:
@@ -100,14 +143,20 @@ class LiveRecorder:
     Dropped queued intervals are explicitly exposed through ``skipped``.
     """
     def __init__(self, target, output_dir, *, ffmpeg="ffmpeg", ffprobe="ffprobe",
-                 duration=30, max_queue=3, clock=time.time):
+                 duration=30, max_queue=3, clock=time.time, stall_seconds=20):
         if not target.is_live or not 1 <= duration <= 30 or not 1 <= max_queue <= 10:
             raise MediaError("invalid_live_recorder")
         self.target, self.directory = target, Path(output_dir) / ("live_"+uuid.uuid4().hex)
         self.ffmpeg, self.ffprobe = str(ffmpeg), str(ffprobe)
         self.duration, self.max_queue, self.clock = duration, max_queue, clock
+        # A stream whose open segment stops growing this long is stalled: restart
+        # it early instead of waiting out the whole clip timeout.
+        self.stall_seconds = stall_seconds
         self.skipped = []
         self._queue, self._last_seen, self._error = [], -1, None
+        self._reason = None
+        self._log = self.directory / "ffmpeg.log"
+        self._tail_state, self._grew_at = None, None
         self._closed_at = {}
         self._condition = threading.Condition()
         self._stop = threading.Event()
@@ -132,8 +181,9 @@ class LiveRecorder:
                  "-segment_format", "mp4", str(self.directory / "part_%06d.mp4")]
         self.started_at = self.clock()
         try:
-            self._proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                          stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            with open(self._log, "wb") as errors:
+                self._proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                              stderr=errors, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except OSError:
             raise MediaError("live_start_failed") from None
         self._thread = threading.Thread(target=self._monitor, name="live-segments", daemon=True)
@@ -146,6 +196,13 @@ class LiveRecorder:
                 paths = sorted(self.directory.glob("part_*.mp4"))
                 ended = self._proc.poll() is not None
                 closed = paths if ended else paths[:-1]
+                if paths and not ended:
+                    try:
+                        state = (paths[-1].name, paths[-1].stat().st_size)
+                    except FileNotFoundError:
+                        state = self._tail_state
+                    if state != self._tail_state:
+                        self._tail_state, self._grew_at = state, time.monotonic()
                 with self._condition:
                     for path in closed:
                         index = int(path.stem.split("_")[-1])
@@ -168,6 +225,7 @@ class LiveRecorder:
                     except FileNotFoundError:
                         pass
                 if ended:
+                    self._reason = ffmpeg_reason(_tail(self._log)) if self._proc.returncode else "exited"
                     self._error = "live_stream_ended"
                     break
                 self._stop.wait(.2)
@@ -183,12 +241,26 @@ class LiveRecorder:
             return gaps
 
     def next_clip(self, timeout=45, *, latest=True):
-        deadline = time.monotonic()+timeout
+        """Wait for the next closed segment.
+
+        Stalled (open segment not growing for stall_seconds once data has
+        flowed): MediaError("live_stalled") right away, so the caller restarts.
+        Still growing at ``timeout``: a slow but live stream gets up to twice
+        the timeout before TimeoutError.
+        """
+        started = time.monotonic()
+        deadline, hard = started+timeout, started+2*timeout
         with self._condition:
             while not self._queue:
                 if self._error or self._stop.is_set():
-                    raise MediaError(self._error or "stopped")
-                left = deadline-time.monotonic()
+                    raise MediaError(self._error or "stopped", self._reason)
+                now = time.monotonic()
+                grew_at = self._grew_at
+                if grew_at is not None and now-max(grew_at, started) >= self.stall_seconds:
+                    raise MediaError("live_stalled")
+                growing = grew_at is not None and now-grew_at < min(5, self.stall_seconds)
+                limit = hard if growing else deadline
+                left = limit-now
                 if left <= 0:
                     raise TimeoutError("live_segment_timeout")
                 self._condition.wait(min(left, 1))
@@ -237,6 +309,7 @@ class LiveRecorder:
         # Only recorder-owned artifacts; returned clips must already be consumed.
         for path in self.directory.glob("part_*.mp4"):
             path.unlink(missing_ok=True)
+        (self.directory / "ffmpeg.log").unlink(missing_ok=True)
         try:
             self.directory.rmdir()
         except OSError:
