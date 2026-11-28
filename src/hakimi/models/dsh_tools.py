@@ -10,7 +10,7 @@ READ={'voice.read','bots.propose','members.mention','web.search','web.read','web
 READ.add('video.watch_attachment')
 TERMINAL={'voice.hum','voice.speak','math.send','files.send','chat.export','diary.export','reply.send','reply.skip',DRAW_TOOL}
 IMAGE_READ={'name':'image.read','description':'读取images.list提供的图片，图片内容随下一次请求提供。',
-            'inputSchema':{'type':'object','properties':{'path':{'type':'string'}},'required':['path']}}
+            'inputSchema':{'type':'object','properties':{'path':{'type':'string','description':'图片代号，如群友发图#后的几位'}},'required':['path']}}
 
 BOT_PROPOSE={'name':'bots.propose','description':'提报本群疑似机器人或长期稳定角色，交Terra巡查确认。',
     'inputSchema':{'type':'object','properties':{'name':{'type':'string','description':'昵称、称呼或成员编号'},
@@ -115,7 +115,8 @@ def execute(request,claim,coordinator,base):
         return {'ok':True,'result':output}
     if name=='images.list':
         from hakimi.chat.image_permissions import allowed_images_for_session
-        return {'ok':True,'result':{'paths':allowed_images_for_session(claim['payload']['session_key'],Path(base))[-8:],
+        from hakimi.core.media_codes import image_refs
+        return {'ok':True,'result':{'images':image_refs(allowed_images_for_session(claim['payload']['session_key'],Path(base))[-8:]),
                 'attached_images':[{k:image[k] for k in ('id','message_id','width','height') if k in image} for image in claim.get('_images',())]}}
     if name=='image.read':
         from hakimi.models.fallback_media import prepare_images,MAX_IMAGES

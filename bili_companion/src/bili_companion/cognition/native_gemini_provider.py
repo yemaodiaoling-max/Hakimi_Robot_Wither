@@ -41,7 +41,7 @@ class NativeGeminiProviderClient:
                 if type(part.get('text')) is str:texts.append(part['text'])
         size=sum(len(text.encode('utf-8')) for text in texts)
         if size>16000 or size+2048>self.input_upper:raise CognitionUnavailable('provider_input_bound_exceeded')
-        if len(json.dumps(payload).encode())>24*1024*1024:raise ValueError('request too large')
+        if len(json.dumps(payload,ensure_ascii=False).encode('utf-8'))>24*1024*1024:raise ValueError('request too large')
 
     def generate(self,model,payload):
         self._validate(model,payload)
@@ -50,7 +50,7 @@ class NativeGeminiProviderClient:
         opener=build_opener(ProxyHandler({}),HTTPSHandler(context=ssl.create_default_context()),_NoRedirect())
         url=self.base_url+model+':generateContent'
         try:
-            request=Request(url,data=json.dumps(payload,allow_nan=False).encode(),method='POST',
+            request=Request(url,data=json.dumps(payload,ensure_ascii=False,allow_nan=False).encode('utf-8'),method='POST',
                 headers={'Content-Type':'application/json','x-goog-api-key':key,'Authorization':'Bearer '+key})
             with opener.open(request,timeout=self.timeout) as response:
                 if response.geturl()!=url:raise CognitionUnavailable('provider_redirect')

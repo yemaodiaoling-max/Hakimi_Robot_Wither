@@ -43,6 +43,19 @@ class GatewayLedgerTests(unittest.TestCase):
             self.assertEqual(july["next_reset_at"], "2026-08-01T07:00:00Z")
             self.assertFalse(august["blocked"])
 
+    def test_month_tokens_reports_cached_total_without_changing_cost(self):
+        settings = {"prices": {"upstream": {"input_usd_per_million": "2", "output_usd_per_million": "4"}}}
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            self.assertEqual(ledger.month_tokens(base)["cached_tokens"], 0)
+            for ident, cached in (("a", 30), ("b", 0)):
+                ledger.record(base, settings, request_id=ident, model="m", upstream_model="upstream",
+                              usage={"promptTokenCount": 100, "candidatesTokenCount": 5,
+                                     "cachedContentTokenCount": cached}, status=200)
+            tokens = ledger.month_tokens(base)
+            self.assertEqual(tokens, {"requests": 2, "input_tokens": 200, "output_tokens": 10, "cached_tokens": 30})
+            self.assertEqual(ledger.month_spend(base), Decimal("0.00044"))
+
     def test_http_rejects_generation_at_cap_but_allows_count_tokens(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)

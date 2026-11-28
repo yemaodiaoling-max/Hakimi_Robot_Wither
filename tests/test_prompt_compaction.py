@@ -46,18 +46,23 @@ class CompactionTests(unittest.TestCase):
         data={"session_key":"group:123","recent_context_messages":[{"session_key":"group:123","message_id":"10","text":f"题目 [群友发图(可用view_file看图): {path.as_posix()}]"}]}
         original=copy.deepcopy(data)
         context=prompt_context.build_context(data,self.base,1000)
-        self.assertIn("群友发图:I1",context["recent_context_messages_untrusted"][0]["text"])
+        from hakimi.core.media_codes import image_code, resolve_image
+        code=image_code(path)
+        self.assertIn("群友发图#"+code,context["recent_context_messages_untrusted"][0]["text"])
+        self.assertNotIn(str(self.base),context["recent_context_messages_untrusted"][0]["text"])
         wire=compact.compact_context(context)
-        table=wire["trusted_image_paths"]
-        self.assertEqual(Path(table["root"])/table["files"]["I1"],path)
+        self.assertEqual(wire["trusted_image_codes"],[code])
+        self.assertNotIn("trusted_image_paths",wire)
+        self.assertEqual(resolve_image("#"+code,[str(path)]),str(path))
         self.assertEqual(data,original)
         lease=prompt_context.activate_context(data,self.base,1000)
         self.assertEqual(lease["allowed_image_paths"],[str(path)])
         fake=compact.clean_text('[群友发图(可用view_file看图): E:/secret.jpg]',[str(path)])
-        self.assertNotIn("I1",fake)
+        self.assertNotIn(code,fake)
         self.assertIn("无可读缓存",fake)
         fallback=compact.compact_context(context,fallback=True)
         self.assertNotIn("trusted_image_paths",fallback)
+        self.assertNotIn("trusted_image_codes",fallback)
         self.assertIn("未提供像素",fallback["image_status"])
 
     def test_clean_before_text_budget_preserves_question_after_protocol_noise(self):

@@ -38,7 +38,7 @@ def declarations(names=None):
              'parametersJsonSchema': copy.deepcopy(item['inputSchema'])} for item in TOOLS]
     for row in rows:
         if row['name'] == 'images.list':
-            row['description'] = '列出本轮允许读取的图片路径；用image.read读取所需图片内容。'
+            row['description'] = '列出本轮允许读取的图片代号；用image.read读取所需图片内容。'
         elif row['name'] == 'tools.list':
             row['description'] = '需要其他工具时查看名称；传入tool_name可查询完整参数并启用该工具。'
         elif row['name'] == 'voice.speak':
@@ -49,7 +49,7 @@ def declarations(names=None):
             argument['maxLength'] = 80
     from hakimi.persona.prompt_language import schema as positive_schema
     rows = positive_schema(rows)
-    rows = rows + positive_schema([copy.deepcopy(item) for item in WEB_TOOLS if item['name'] not in {row['name'] for row in rows}]) + [{'name': 'image.read', 'description': '读取images.list返回的图片，实际图片内容会直接提供给你。', 'parametersJsonSchema': {'type':'object','properties':{'path':{'type':'string'}},'required':['path']}}]
+    rows = rows + positive_schema([copy.deepcopy(item) for item in WEB_TOOLS if item['name'] not in {row['name'] for row in rows}]) + [{'name': 'image.read', 'description': '读取images.list返回的图片，实际图片内容会直接提供给你。', 'parametersJsonSchema': {'type':'object','properties':{'path':{'type':'string','description':'图片代号，如群友发图#后的几位'}},'required':['path']}}]
     rows = [row for row in rows if names is None or row['name'] in names]
     for row in rows:
         if 'description' in row:
@@ -274,7 +274,13 @@ class VertexSession:
         else:
             visible = None
         parts = []
-        for name in allowed_images_for_session(key, self.cwd):
+        from hakimi.core.media_codes import code_map, resolve_image
+        allowed = allowed_images_for_session(key, self.cwd)
+        codes = code_map(allowed)
+        if requested is not None:
+            # The model names images by the stable code shown in the chat rows.
+            requested = [item if item in codes else resolve_image(item, allowed) for item in requested]
+        for name in allowed:
             if requested is not None and name not in requested or visible is not None and name not in visible:
                 continue
             path = Path(name)
@@ -290,7 +296,7 @@ class VertexSession:
                     data = converted.getvalue()
                     mime = 'image/png'
                     parts.append({'text': '以下是GIF的首个实际画面，仅表示该帧，不代表完整动画。'})
-            parts.extend([{'text': '图片来源：' + name},
+            parts.extend([{'text': '图片#' + codes[name]},
                           {'inlineData': {'mimeType': mime, 'data': base64.b64encode(data).decode('ascii')}}])
         if requested is None:
             from hakimi.models.fallback_media import MAX_IMAGES, prepare_recalled_sticker
@@ -503,6 +509,10 @@ class VertexSession:
                                         'provider': value.get('_provider') or ('argon_backup' if getattr(self, '_using_backup', False) else 'vertex')})
                 if value.get('_tool_protocol'):
                     actual_requests[-1]['tool_protocol'] = value['_tool_protocol']
+                for key in ('promptTokenCount', 'cachedContentTokenCount', 'candidatesTokenCount'):
+                    count = (value.get('usageMetadata') or {}).get(key)
+                    if type(count) is int and count >= 0:
+                        actual_requests[-1][key] = count
                 for key, count in value.get('usageMetadata', {}).items():
                     if type(count) is int and count >= 0:
                         usage[key] = usage.get(key, 0) + count
@@ -686,6 +696,7 @@ class VertexSession:
                     raise RuntimeError('vertex_turn_ownership_lost')
                 self.note('ready')
                 compatible = dict(input_tokens=usage.get('promptTokenCount',0),
+                                  cached_input_tokens=usage.get('cachedContentTokenCount',0),
                                   output_tokens=usage.get('candidatesTokenCount',0) + usage.get('thoughtsTokenCount',0),
                                   total_tokens=usage.get('totalTokenCount',0), raw=usage)
                 self.contents = []

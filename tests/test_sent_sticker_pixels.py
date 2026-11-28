@@ -18,6 +18,7 @@ from hakimi.models.fallback_media import prepare_images
 from hakimi.models.fallback_runner import prepare_runtime
 from hakimi.models.vertex_session import VertexSession
 from hakimi.chat.image_permissions import register_cached_image
+from hakimi.core.media_codes import image_code
 
 
 class SentStickerPixelsTests(unittest.TestCase):
@@ -112,13 +113,16 @@ class SentStickerPixelsTests(unittest.TestCase):
             self.target["image_paths"].append(str(path))
             fallback = prepare_images(self.payload, self.base)
             primary = [p["inlineData"]["mimeType"] for p in self.vertex_parts() if "inlineData" in p]
-            self.assertEqual([r["id"] for r in fallback], ["I1", "R1"] if index == 1 else ["I1", "I2"])
+            # Pixels carry the same stable code as the chat row; the first
+            # image keeps its code when the second one arrives.
+            codes = [image_code(p) for p in self.target["image_paths"]]
+            self.assertEqual([r["id"] for r in fallback], [codes[0], "R1"] if index == 1 else codes)
             self.assertEqual(primary, ["image/png", "image/jpeg"] if index == 1 else ["image/png", "image/png"])
             if index == 1:
                 self.claim["_images"] = fallback
             else:
-                execute({"tool": "image.read", "input": {"path": str(path)}}, self.claim, Mock(), self.base)
-                self.assertEqual([r["id"] for r in self.claim["_images"]], ["I1", "I2"])
+                execute({"tool": "image.read", "input": {"path": "#" + codes[1]}}, self.claim, Mock(), self.base)
+                self.assertEqual([r["id"] for r in self.claim["_images"]], codes)
 
     def test_explicit_image_read_and_chat_text_cannot_grant_sticker_access(self):
         self.assertEqual(prepare_images(self.payload, self.base, requested=[str(self.sticker)]), [])

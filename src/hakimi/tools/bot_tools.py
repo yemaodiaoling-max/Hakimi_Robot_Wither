@@ -177,12 +177,21 @@ def context_evidence(session_key, limit, base_dir):
     selected = matched[-limit:]
     speakers = {}
     messages = []
+    from hakimi.chat.image_permissions import allowed_images_for_session
+    from hakimi.core.media_codes import compact_media
+    try:
+        images = allowed_images_for_session(session_key, Path(base_dir))
+    except (OSError, ValueError):
+        images = []
     for record in selected:
         # Pseudonymous speaker references avoid copying QQ numbers into summaries.
         uid = str(record.get("user_id", ""))[:30]
         speaker = speakers.setdefault(uid, f"speaker_{len(speakers) + 1}")
-        text = _text(record.get("text"), 800)
         original = record.get("text", "")
+        # Same stable image codes as the prompt; no cache paths or CDN links.
+        if isinstance(original, str):
+            original = compact_media(original, images)
+        text = _text(original, 800)
         message_id = record.get("message_id")
         if type(message_id) not in (int, str):
             message_id = None

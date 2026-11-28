@@ -71,17 +71,23 @@ class PrefixTests(unittest.TestCase):
         self.assertIn('风格提醒 a。', notes)
         self.assertTrue(any('sticker_a.png' in note for note in notes))
         self.assertTrue(any('Carbon深度推理就绪' in note for note in notes))
-        self.assertTrue(any('stickers.collect' in note for note in notes))
+        late = data.pop('late_turn_notes')
+        self.assertTrue(any('stickers.collect' in note for note in late))
+        self.assertTrue(any('本轮可以发表情包' in note for note in late))
+        self.assertTrue(any('本轮才有' not in note for note in notes))
         self.assertEqual(prompt.count(context['admin_guidance_text']), 1)
-        self.assertEqual(data, reference_timeline_excerpts(lossless_context(positive_context(context))))
+        expected = positive_context(context)
+        expected.pop('admin_guidance_text')
+        self.assertEqual(data, reference_timeline_excerpts(lossless_context(expected)))
 
     def test_keeps_distinct_filtered_owner_guidance(self):
         context = self.turn()
         context['admin_guidance_text'] = '用亲近的口吻接话。不要省略推导。'
         prompt = self.render(context)
         data = json.loads(prompt.rsplit('\n', 1)[1])
-        self.assertEqual(data['admin_guidance_text'], context['admin_guidance_text'])
+        self.assertNotIn('admin_guidance_text', data)
         self.assertIn('用亲近的口吻接话。', data['turn_notes'])
+        self.assertEqual(prompt.count('用亲近的口吻接话'), 1)
 
     def test_same_group_prefix_survives_chat_memory_time_and_reminder_changes(self):
         prefix = os.path.commonprefix([
@@ -98,7 +104,43 @@ class PrefixTests(unittest.TestCase):
             self.render(self.turn(profile='quiet_default', label='乙')),
         ])
         self.assertIn('sticker_a.png', prefix)
-        self.assertIn('"scoped_memory_data"', prefix)
+        self.assertNotIn('"scoped_memory_data"', prefix)
+
+    def render_many(self, context, library):
+        with (
+            patch.object(prompt_context, 'build_context', return_value=context),
+            patch.object(prompt_context, 'gemini_style_feedback', return_value=''),
+            patch.object(prompt_context, 'evaluate_sticker', return_value={'allowed': True}),
+            patch.object(prompt_context, 'available_stickers', return_value=library),
+        ):
+            return prompt_context.render_vertex_prompt({'session_key': context['session_key']}, self.base)
+
+    def test_many_stickers_prefix_ignores_last_messages(self):
+        library = [f'sticker_{i:03d}.png' for i in range(60)] + [f'hakimi_x{i}_v2.png' for i in range(9)]
+        first, second = self.turn(label='甲'), self.turn(label='乙')
+        first['recent_context_messages_untrusted'] = [{'message_id': '1', 'user_id': '1', 'text': '第一句'}]
+        second['recent_context_messages_untrusted'] = [{'message_id': '1', 'user_id': '1', 'text': '第一句'},
+                                                       {'message_id': '2', 'user_id': '2', 'text': '完全不同的新消息'}]
+        a, b = self.render_many(first, library), self.render_many(second, library)
+        prefix = os.path.commonprefix([a, b])
+        self.assertIn('已收集表情包', prefix)
+        self.assertIn('自带表情', prefix)
+        self.assertIn('"recent_context_messages', prefix)
+        self.assertNotIn('本轮检索到的记忆', prefix)
+
+    def test_unknown_context_key_lands_after_stable_block(self):
+        context = self.turn()
+        context['brand_new_volatile_key'] = {'x': 1}
+        context['rolling_and_axial_memory'] = {'rolling_bridge': 'r'}
+        context['quote_reply_hint'] = {'q': 1}
+        keys = list(json.loads(self.render(context).rsplit('\n', 1)[1]))
+        history = next(i for i, key in enumerate(keys) if key.startswith('recent_context_messages'))
+        self.assertLess(keys.index('turn_notes'), history)
+        for key in ('brand_new_volatile_key', 'rolling_and_axial_memory', 'quote_reply_hint',
+                    'scoped_memory_data', 'wake_mode'):
+            self.assertGreater(keys.index(key), history, key)
+        self.assertEqual(keys[-1], 'current_time_at_wake')
+        self.assertEqual(keys[-2], 'late_turn_notes')
 
     def test_unchanged_menu_stays_in_prefix_when_wake_settings_change(self):
         mention = self.turn(profile='quiet_default', label='甲')
@@ -120,6 +162,51 @@ class PrefixTests(unittest.TestCase):
         self.assertIn('"chat_order"', general)
         self.assertNotIn('原神考据与最新正式版本基线', study)
         self.assertNotIn('"session_key"', general)
+
+
+class CliPromptTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.base = Path(temp.name)
+        (self.base / 'style_guide.md').write_text('同一份角色与工具说明。\n', encoding='utf-8')
+
+    def context(self):
+        return {'session_key': 'group:1', 'current_time_at_wake': 't', 'wake_mode': '群聊@回复',
+                'group_style': {'name': 'quiet_default'},
+                'recent_context_messages_untrusted': [{'message_id': '1', 'user_id': '1', 'text': '你好'}],
+                'admin_guidance_text': '用亲近的口吻接话。'}
+
+    def render(self, **kwargs):
+        with (
+            patch.object(prompt_context, 'build_context', return_value=self.context()),
+            patch.object(prompt_context, 'evaluate_sticker', return_value={'allowed': False}),
+        ):
+            return prompt_context.render_prompt({'session_key': 'group:1'}, self.base, **kwargs)
+
+    def test_cli_prompt_lists_only_selected_tools_and_admin_text_once(self):
+        from hakimi.prompt.tool_catalog import BY_NAME
+        with patch('hakimi.prompt.tool_selection.select_names', return_value={'reply.send', 'reply.skip'}):
+            prompt = self.render()
+        self.assertIn('reply.send ', prompt)
+        self.assertNotIn('files.send ', prompt)
+        self.assertLess(len(prompt), len(self.render_all()))
+        self.assertIn('call tools.list', prompt)
+        self.assertEqual(prompt.count('用亲近的口吻接话'), 1)
+        self.assertIn('tools.list', BY_NAME)
+
+    def render_all(self):
+        with patch('hakimi.prompt.tool_selection.select_names', side_effect=RuntimeError):
+            return self.render()
+
+    def test_review_prompt_lists_only_review_tools(self):
+        from hakimi.prompt.tool_selection import REVIEW
+        prompt = prompt_context.render_prompt({'session_key': 'group:1', 'internal_review': {'review_id': 'r'}}, self.base)
+        self.assertIn('memory.read ', prompt)
+        self.assertIn('reply.skip ', prompt)
+        self.assertNotIn('files.send ', prompt)
+        self.assertNotIn('voice.speak ', prompt)
+        self.assertTrue(REVIEW)
 
 
 if __name__ == '__main__':

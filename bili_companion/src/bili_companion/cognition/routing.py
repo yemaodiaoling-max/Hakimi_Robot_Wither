@@ -27,6 +27,7 @@ FAST_PURPOSES = {'video-selection', 'comment-reply', 'live-decision',
                  'video-child-expression', 'live-child-expression'}
 VIDEO_PROFILES = {'video-selection': 'video_selection_profile', 'video-observe': 'video_hydrogen_profile'}
 NATIVE_VIDEO_ROUTE = 'video-native-observe'
+OBSERVATION_PURPOSES = {'video-observe', 'live-observe'}
 
 
 def flash_attempt(config, payload, validator, ledger, spend, *, audit_costs,
@@ -117,7 +118,7 @@ class HydrogenRouteEngine(CognitionEngine):
                 engine, duty = route
                 if not duty.on_standby(self.clock()):
                     return engine.request_limit
-        if purpose == 'video-observe' and self.claude_video_engine is not None:
+        if purpose in OBSERVATION_PURPOSES and self.claude_video_engine is not None:
             return self.claude_video_engine.request_limit
         return self.request_limit
 
@@ -192,7 +193,7 @@ class HydrogenRouteEngine(CognitionEngine):
         return dict(response, _accepted_observation_model=model), identity, counts
 
     def _call_legacy(self, payload, *, response_validator=None, flash_validator=None, legacy_model=None, **kwargs):
-        if kwargs.get('purpose') == 'video-observe' and self.claude_video_engine is not None:
+        if kwargs.get('purpose') in OBSERVATION_PURPOSES and self.claude_video_engine is not None:
             response_validator = response_validator or flash_validator
         if self.legacy_engine is not None:
             self._apply_call_timeout(self.legacy_engine)
@@ -288,7 +289,7 @@ class HydrogenRouteEngine(CognitionEngine):
             primary_call = self.text_engine._call
             primary_engine = self.text_engine
             error_prefix = 'claude_primary'
-        elif has_media and purpose == 'video-observe' and self.claude_video_engine is not None:
+        elif has_media and purpose in OBSERVATION_PURPOSES and self.claude_video_engine is not None:
             primary_engine = self.claude_video_engine
             primary_model = primary_engine.observer_model
             primary_call = primary_engine._call

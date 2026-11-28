@@ -5,27 +5,30 @@ from pathlib import Path
 import re
 from urllib.parse import unquote, urlsplit
 
-REVISION = "2026-10-30-lossless-speakers-v3"
+from hakimi.core.media_codes import compact_media, image_refs, trim_quotes
+
+REVISION = "2026-11-28-stable-media-codes-v4"
 _CODE = re.compile(r"(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`)")
 _IMAGE = re.compile(r"\[(群友发图|表情包图片)\(可用view_file看图\):\s*([^\]\n]+)\]")
-
-
-def _path_key(value):
-    return str(value).replace("\\", "/").casefold()
+_SOURCE = re.compile(r"^\s*(?:def |class |import |from \S+ import |if .+:|for .+:|while .+:|const |let |var |function |SELECT |curl |python |pwsh |powershell )", re.M)
 
 
 def clean_text(text, image_paths=()):
-    """Strip transport noise outside code. Never summarize or deduplicate human messages."""
-    if re.search(r"^\s*(?:def |class |import |from \S+ import |if .+:|for .+:|while .+:|const |let |var |function |SELECT |curl |python |pwsh |powershell )",text,re.M):
-        return text  # Unfenced source code is still source code.
-    aliases = {_path_key(path): f"I{i}" for i,path in enumerate(image_paths,1)}
+    """Strip transport noise outside code. Never summarize or deduplicate human messages.
+
+    Cached images become stable ``#code`` handles (hakimi.core.media_codes);
+    tools resolve a code only against the daemon's authorized image list.
+    """
+    if _SOURCE.search(text):
+        # Unfenced source code is still source code; only private cache paths
+        # are replaced so they never reach the model.
+        return _IMAGE.sub(lambda match: compact_media(match[0], image_paths, technical=True), text)
     technical = bool(re.search(r"CQ码|CQ 码|协议|base64|正则|原样|源码|解码|编码|JSON|XML",text,re.I))
     def plain(part):
         part = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\u200b\ufeff\u2060]", "", part)
-        def image(match):
-            alias=aliases.get(_path_key(match[2].strip()))
-            return f"[{match[1]}:{alias}]" if alias else f"[{match[1]}:无可读缓存]"
-        part = _IMAGE.sub(image,part)
+        # Image markers always; raw CQ media, cards and tracking URLs unless the
+        # human is discussing the protocol itself.
+        part = compact_media(part, image_paths, technical=technical)
         if not technical:
             def face(match):
                 tag=match[0]
@@ -44,16 +47,6 @@ def clean_text(text, image_paths=()):
             part=re.sub(r"\[CQ:reply,id=(-?[0-9]+)[^\]]*\]",r"[引用:\1]",part)
             part=re.sub(r"\[CQ:face,id=([0-9]+)[^\]]*\]",r"[QQ表情:\1]",part)
             part=re.sub(r"\[CQ:forward,id=([0-9]+)(?:,[^\]]*)?(?:\]|$)",r"[合并转发:\1]",part)
-            def cq_image(match):
-                file=re.search(r"(?:^|,)file=([^,\]]+)",match[0][4:])
-                if not file:return "[图片]"
-                path=unquote(file[1])
-                if path.startswith("file:///"):path=path[8:]
-                alias=aliases.get(_path_key(path))
-                if alias:return "[图片:"+alias+"]"
-                name=Path(path.replace("\\","/")).name
-                return "[表情:"+name+"]" if re.fullmatch(r"[A-Za-z0-9_-]{1,100}\.(?:gif|png|jpe?g|webp)",name,re.I) else "[图片]"
-            part=re.sub(r"\[CQ:image,[^\]]+\]",cq_image,part)
             repeated=re.compile(r"(\[(?:QQ表情[^\]]*|表情:[^\]]*)\])(?:[ \t]*\1){3,}")
             part=repeated.sub(lambda m:m[1]+"×"+str(m[0].count(m[1])),part)
         part=re.sub(r"[ \t]+(?=\r?\n)","",part)
@@ -83,7 +76,7 @@ def compact_context(context, *, fallback=False):
     if "scoped_memory_data" in result:
         result["scoped_memory_data"]=bounded_memories(result["scoped_memory_data"])
     speakers, rows, actor_keys = {}, [], {}
-    for message in context.get("recent_context_messages_untrusted",[]):
+    for message in _visible_quote_rows(context.get("recent_context_messages_untrusted",[])):
         pair=(message.get("user_id",""),message.get("nickname",""))
         if pair not in actor_keys:
             alias=f"u{len(actor_keys)+1}"
@@ -123,16 +116,44 @@ def compact_context(context, *, fallback=False):
     paths=context.get("trusted_image_paths",[])
     if fallback:
         result.pop("trusted_image_paths",None)
+        result.pop("trusted_image_codes",None)
         if result.get("provided_images_untrusted"):
             result["image_status"]="仅provided_images_untrusted列出的图片已附带像素，其余图片不猜画面"
         elif paths:result["image_status"]="仅有图片记录，未提供像素，不猜画面"
-    elif paths:
-        parents={str(Path(path).parent) for path in paths}
-        if len(parents)==1:
-            result["trusted_image_paths"]={"root":parents.pop(),"files":{f"I{i}":Path(path).name for i,path in enumerate(paths,1)}}
     for key,value in list(result.items()):
         if value in ([],{},""):result.pop(key)
     return result
+
+
+def _visible_quote_rows(messages):
+    """A quote of a message that is itself in the window keeps only its reference.
+
+    ``[引用 昵称 的消息(id=N): "原文"]`` repeats the quoted text every turn; when
+    row N is visible the id already points at the identical words.
+    """
+    if not isinstance(messages, list) or not all(isinstance(row, dict) for row in messages):
+        return messages
+    ids = {str(row.get("message_id")) for row in messages if row.get("message_id") not in (None, "")}
+    rows = []
+    for row in messages:
+        text = row.get("text")
+        if isinstance(text, str) and "[引用 " in text:
+            trimmed = trim_quotes(text, ids - {str(row.get("message_id"))})
+            if trimmed != text:
+                row = dict(row, text=trimmed)
+        rows.append(row)
+    return rows
+
+
+def _image_codes(result):
+    """Authorized images on the wire are stable codes; tools map them back."""
+    paths = result.get("trusted_image_paths")
+    if isinstance(paths, list) and paths and all(isinstance(path, str) for path in paths):
+        # Rename in place: key order is the cache prefix order.
+        items = [("trusted_image_codes", image_refs(paths)) if key == "trusted_image_paths" else (key, value)
+                 for key, value in result.items()]
+        result.clear()
+        result.update(items)
 
 
 def dumps_context(context, *, fallback=False):
@@ -226,8 +247,14 @@ def lossless_context(context):
     message IDs are references only when every field is exactly identical.
     Repeated identities may share a speaker table; every name/ID is retained.
     Repeated scoped notes can be referenced by memory_id in the vertical threads.
+    Quotes of visible messages and authorized image paths are references
+    (``(id=N)`` and ``#code``) that tools resolve back to the same data.
     """
     result = dict(context)
+    _image_codes(result)
+    for key in ('recent_context_messages', 'recent_context_messages_untrusted'):
+        if key in result:
+            result[key] = _visible_quote_rows(result[key])
     opportunity = result.get('memory_opportunity')
     social = result.get('social_memory_opportunity')
     if isinstance(opportunity, dict) and isinstance(social, dict):

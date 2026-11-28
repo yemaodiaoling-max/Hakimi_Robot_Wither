@@ -4,6 +4,7 @@ Only the key and CA paths are configured. No QQ imports, tools, proxy, redirects
 prompt logging, retries, SDK, or credential-bearing subprocess arguments.
 """
 import json
+import math
 from pathlib import Path
 import re
 import ssl
@@ -92,11 +93,59 @@ class GatewayClient:
         except Exception:
             raise CognitionUnavailable() from None
 
+    @staticmethod
+    def _local_media_tokens(contents):
+        """Split audio/video inlineData out of contents and bound its tokens locally.
+
+        The count only feeds a budget reservation, so uploading a multi-MB base64 clip
+        just to count it is wasteful. Media is bounded conservatively instead: 258
+        tokens per sampled frame (the default-resolution cost, above the low-resolution
+        cost) and 32 tokens per audio second; duration defaults to the 60 s chunk cap.
+        Unknown inline media stays in the remote count.
+        """
+        duration = 60.
+        for content in contents:
+            for part in content.get('parts', []):
+                text = part.get('text')
+                if type(text) is str and text.startswith('{'):
+                    try:
+                        value = json.loads(text).get('duration')
+                    except (ValueError, AttributeError):
+                        continue
+                    if type(value) in (int, float) and 0 < value <= 60:
+                        duration = float(value)
+        remote, local = [], 0
+        for content in contents:
+            parts = []
+            for part in content.get('parts', []):
+                inline = part.get('inlineData')
+                mime = inline.get('mimeType') if type(inline) is dict else None
+                if type(mime) is str and mime.startswith('video/'):
+                    fps = (part.get('videoMetadata') or {}).get('fps', 1)
+                    fps = float(fps) if type(fps) in (int, float) and 0 < fps <= 24 else 24.
+                    local += math.ceil(duration*fps)*258 + math.ceil(duration)*32
+                elif type(mime) is str and mime.startswith('audio/'):
+                    local += math.ceil(duration)*32
+                else:
+                    parts.append(part)
+            if parts:
+                remote.append(dict(content, parts=parts))
+        if not remote:
+            remote = [{'role':'user', 'parts':[{'text':'.'}]}]
+        return remote, local
+
     def count_tokens(self, model, payload):
-        result = self._request(model, 'countTokens', {key:value for key,value in payload.items()
-            if key in {'contents','systemInstruction','generationConfig'}})
+        request = {key:value for key,value in payload.items()
+            if key in {'contents','systemInstruction','generationConfig'}}
+        local = 0
+        if type(request.get('contents')) is list:
+            request['contents'], local = self._local_media_tokens(request['contents'])
+        result = self._request(model, 'countTokens', request)
         total = result.get('totalTokens')
         if type(total) is not int or not 0 <= total <= 200_000:
+            raise CognitionUnavailable('model_token_count_invalid')
+        total += local
+        if total > 200_000:
             raise CognitionUnavailable('model_token_count_invalid')
         return total
 

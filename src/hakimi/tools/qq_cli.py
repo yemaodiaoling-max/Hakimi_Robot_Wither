@@ -333,8 +333,12 @@ def cmd_save_sticker(args):
             raise ToolError("当前会话图片授权路径无效")
         allowed_list.append(_contained_path(Path(item), cache_root))
     allowed = set(allowed_list)
+    from hakimi.core.media_codes import resolve_image
+    coded = resolve_image(raw_url, [str(path) for path in allowed_list])
     alias_match = re.fullmatch(r"I([1-9][0-9]*)", raw_url, re.I)
-    if alias_match:
+    if coded:
+        src_path = _contained_path(Path(coded), cache_root)
+    elif alias_match:
         idx = int(alias_match.group(1)) - 1
         visible_allowed = allowed_list[-8:]
         if 0 <= idx < len(visible_allowed):
@@ -537,7 +541,9 @@ def _cmd_call(args):
         if payload.get('session_key')!=args.session:raise ToolError('搜索会话不匹配')
         output = run(name, data, 15,BASE_DIR,payload)
     elif name == "images.list":
-        output = {"images": context.get("allowed_image_paths", [])}
+        from hakimi.core.media_codes import code_map
+        output = {"images": [{"code": code, "path": path}
+                             for path, code in code_map(context.get("allowed_image_paths", [])).items()]}
     elif name == "files.list":
         from hakimi.chat.file_delivery import directory, menu
         output = {"files": menu(args.session, BASE_DIR, limit=64), "output_directory": str(directory(args.session, BASE_DIR))}

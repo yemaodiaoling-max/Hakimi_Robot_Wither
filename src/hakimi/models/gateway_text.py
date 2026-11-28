@@ -62,6 +62,9 @@ def _extract_gemini_text_and_usage(data: dict, fallback_model: str) -> tuple[str
     usage = {"prompt_tokens": prompt_t, "completion_tokens": cand_t + thought_t}
     if thought_t:
         usage["reasoning_tokens"] = thought_t
+    cached_t = int(meta.get("cachedContentTokenCount") or 0)
+    if cached_t:
+        usage["cached_tokens"] = cached_t
     model = str(data.get("modelVersion") or fallback_model)
     return "".join(texts), model, usage
 

@@ -473,8 +473,9 @@ def _persona_section(base, limit=6000):
 def render_internal_review_prompt(data,base=BASE_DIR,claim=None,*,cli_label=None):
     from hakimi.persona.prompt_language import PERSONA
     from hakimi.prompt.tool_catalog import brief
+    from hakimi.prompt.tool_selection import REVIEW
     footer=f" --session {data['session_key']} --turn {claim['token']}" if claim else ''
-    return PERSONA+'\n本轮整理人物与记忆。阅读候选及其来源，按需要选择记忆工具，完成后调用reply.skip。\n'+brief(cli_label or 'python qq_cli.py')+footer+'\n'+json.dumps(data.get('internal_review',{}),ensure_ascii=False)
+    return PERSONA+'\n本轮整理人物与记忆。阅读候选及其来源，按需要选择记忆工具，完成后调用reply.skip。\n'+brief(cli_label or 'python qq_cli.py', names=REVIEW)+footer+'\n'+json.dumps(data.get('internal_review',{}),ensure_ascii=False)
 
 
 def activate_context(data, base=BASE_DIR, now=None, claim=None):
@@ -532,8 +533,17 @@ def render_prompt(data,base=BASE_DIR,claim=None,*,cli_label=None,wait_after_turn
     context=positive_context(build_context(data,base));style=instructions(paths.persona('style_guide.md',base).read_text(encoding='utf-8'))
     if cli_label:style=style.replace('python qq_cli.py',cli_label)
     footer=f'\n本轮参数：--session "{data["session_key"]}" --turn "{claim["token"]}"' if claim else ''
-    admin_note = context.get('admin_guidance_text', '')
-    tools = brief(cli_label or 'python qq_cli.py', include_drawing=bool(claim and offer_drawing(data, base)))
+    context = dict(context)
+    admin_note = context.pop('admin_guidance_text', '') or ''  # sent once, as raw text below
+    names = None
+    try:
+        from hakimi.prompt.tool_catalog import BY_NAME
+        from hakimi.prompt.tool_selection import context_tool_hints, select_names
+        names = select_names(data, set(BY_NAME), base, hints=context_tool_hints(context))
+        names.add('tools.list')
+    except Exception:
+        names = None  # fall back to the full catalog rather than hide tools
+    tools = brief(cli_label or 'python qq_cli.py', include_drawing=bool(claim and offer_drawing(data, base)), names=names)
     return style+'\n按任务选用函数对应的call工具，reply.send发送回复，reply.skip结束静默轮次。\n'+tools+footer+instructions(lore_guidance(context))+instructions(admin_note)+_sticker_section(context,base)+'\n本轮聊天与记忆资料：\n'+json.dumps(lossless_context(context),ensure_ascii=False,separators=(',',':'))
 
 
@@ -612,11 +622,15 @@ def render_vertex_prompt(data, base=BASE_DIR, claim=None, *, selected_model=None
              'before/after写图外极短口语。静默用reply.skip。回复与记笔记可并行，有值得留的细节用memory.remember或memory.social_append。\n'
              'listening_window是被@后的收集轮次，接话随轮次渐短。冷群结合群名、历史和近期尝试起话题，互动成功可记入群记忆。\n')
     notes = [instructions(gemini_style_feedback(base))]
-    admin_note = context.get('admin_guidance_text', '')
-    filtered_admin_note = instructions(admin_note)
-    if filtered_admin_note and filtered_admin_note.strip() != admin_note.strip():
+    # Admin guidance is sent exactly once, as a turn note (not also as a key).
+    context = dict(context)
+    filtered_admin_note = instructions(context.pop('admin_guidance_text', '') or '')
+    if filtered_admin_note.strip():
         notes.append(filtered_admin_note)
-    notes.append(_sticker_section(context, base))
+    # Stable menu stays in the cacheable head; the per-turn allowed/denied
+    # decision goes to the tail.
+    notes.append(_sticker_menu(context, base))
+    late_notes = [_sticker_status(context, base)]
     if selected_model == 'gemini-4-carbon':
         carbon_note = (
             '\n【Carbon深度推理就绪】直接以哈基米身份给出精炼透彻的分析，省略关于模型调用或切换背景的说明。'
@@ -624,7 +638,7 @@ def render_vertex_prompt(data, base=BASE_DIR, claim=None, *, selected_model=None
         )
         notes.append(carbon_note)
     if context.get('trusted_image_paths'):
-        notes.append('\n可按语境调用stickers.collect收藏群友本轮发送的图片，用image填I1等编号或路径，filename填简短英文文件名。\n')
+        late_notes.append('\n可按语境调用stickers.collect收藏群友本轮发送的图片，用image填群友发图#后的图片代号，filename填简短英文文件名。\n')
     shared_fields = ('chat_order', 'group_style', 'genshin_current_version')
     ordered = {key: context[key] for key in shared_fields if key in context}
     # Groups with the same profile and lore can share this prefix before the
@@ -634,42 +648,87 @@ def render_vertex_prompt(data, base=BASE_DIR, claim=None, *, selected_model=None
         ordered['group_guidance'] = group_guidance
     if 'session_key' in context:
         ordered['session_key'] = context['session_key']
+    # Allow-list of keys that are stable for a group; anything else (including
+    # keys added in the future) defaults to the volatile tail.
+    for key in STABLE_CONTEXT_KEYS:
+        if key in context and key not in ordered:
+            ordered[key] = context[key]
     ordered['turn_notes'] = [note for note in notes if note]
-    changing = ('selected_real_dialogues', 'scoped_memory_data', 'own_diary_memory',
-                'memory_recall_opportunity', 'memory_opportunity', 'social_memory_opportunity',
-                'recent_own_replies_for_variation', 'admin_privilege', 'desktop_pet_continuity',
-                'recent_context_messages', 'reply_target', 'listening_window', 'current_time_at_wake')
-    ordered.update((key, value) for key, value in context.items() if key not in ordered and key not in changing)
-    ordered.update((key, context[key]) for key in changing if key in context)
+    # Volatile tail: history first (it slides slowly), per-turn data after it,
+    # wake time last.
+    for key in HISTORY_KEYS:
+        if key in context:
+            ordered[key] = context[key]
+    ordered.update((key, value) for key, value in context.items()
+                   if key not in ordered and key != 'current_time_at_wake')
+    late_notes = [note for note in late_notes if note]
+    if late_notes:
+        ordered['late_turn_notes'] = late_notes
+    if 'current_time_at_wake' in context:
+        ordered['current_time_at_wake'] = context['current_time_at_wake']
     compacted = reference_timeline_excerpts(lossless_context(ordered))
     return fixed+'\n本轮聊天、图片和记忆资料：\n'+json.dumps(compacted,ensure_ascii=False,separators=(',',':'))
 
 
+# Context keys that stay identical between turns of the same group. Everything
+# else is placed after them so it cannot break the shared prompt prefix.
+STABLE_CONTEXT_KEYS = ('core_identity',)
+HISTORY_KEYS = ('recent_context_messages_untrusted', 'recent_context_messages')
+
+
+def _sticker_status(context, base):
+    """Per-turn allowed/denied line (depends on recent outbox history)."""
+    if context.get('cold_topic_request'):
+        return ''
+    if evaluate_sticker(context["session_key"], base=base)["allowed"]:
+        return "\n本轮可以发表情包：按需从turn_notes里的可选表情包挑选，独立一条。\n"
+    return "\n本轮采用文字回复，不发表情包。\n"
+
+
+def _sticker_menu(context, base):
+    """Sticker menu that is identical for a whole day of one group, not per message."""
+    if context.get('cold_topic_request'):
+        return ''
+    return _sticker_menu_text(base, _menu_seed(context))
+
+
+def _menu_seed(context):
+    # The subset rotates daily so different stickers get picked over time, while
+    # every turn of the day shares the same prompt prefix.
+    return str(context.get("session_key", "")) + datetime.now(CHAT_ZONE).strftime("%Y-%m-%d")
+
+
 def _sticker_section(context, base):
-    sticker_decision = {'allowed': False} if context.get('cold_topic_request') else evaluate_sticker(context["session_key"], base=base)
-    if sticker_decision["allowed"]:
-        names = sorted({Path(name).name for name in available_stickers(base)})
-        seed = context["session_key"] + json.dumps(context.get("recent_context_messages_untrusted",context.get("recent_context_messages",[]))[-2:], ensure_ascii=False)
-        personal = sorted((name for name in names if name.startswith("hakimi_") and name.endswith("_v2.png")),
-                          key=lambda name: hashlib.sha256((seed + name).encode()).hexdigest())
-        others = sorted((name for name in names if name not in personal),
-                        key=lambda name: hashlib.sha256((seed + name).encode()).hexdigest())
-        featured_names = ('hakimi_agree_20261029.png', 'hakimi_popcorn_20261029.png',
-                          'hakimi_confused_20261029.png', 'hakimi_goodnight_20261029.png')
-        featured = [name for name in featured_names if name in names]
-        collected_pick = featured + [name for name in others if name not in featured][:18-len(featured)]
-        personal_pick = personal[:6]
-        lines = ["\n=== 可选表情包：按语境挑选，独立一条；reply.send的sticker填完整文件名，优先选择应景的已收集表情包 ==="]
-        if collected_pick:
-            lines.append("已收集表情包: " + ", ".join(collected_pick))
-        if personal_pick:
-            lines.append("自带表情: " + ", ".join(personal_pick))
-        if not collected_pick and not personal_pick:
-            lines.append(", ".join((others + personal)[:24]))
-        return "\n".join(lines)
+    """Combined menu + decision for the CLI prompt path."""
+    decision = {'allowed': False} if context.get('cold_topic_request') else evaluate_sticker(context["session_key"], base=base)
+    if decision["allowed"]:
+        return _sticker_menu_text(base, _menu_seed(context))
     if context.get('cold_topic_request'):
         return ''
     return "\n本轮采用文字回复。\n"
+
+
+def _sticker_menu_text(base, seed=""):
+    names = sorted({Path(name).name for name in available_stickers(base)})
+    # Pseudo-shuffle keyed by the seed (group + day), never by chat content.
+    def order(name):
+        return hashlib.sha256((seed + name).encode()).hexdigest()
+    personal = sorted((name for name in names if name.startswith("hakimi_") and name.endswith("_v2.png")),
+                      key=order)
+    others = sorted((name for name in names if name not in personal), key=order)
+    featured_names = ('hakimi_agree_20261029.png', 'hakimi_popcorn_20261029.png',
+                      'hakimi_confused_20261029.png', 'hakimi_goodnight_20261029.png')
+    featured = [name for name in featured_names if name in names]
+    collected_pick = featured + [name for name in others if name not in featured][:18-len(featured)]
+    personal_pick = personal[:6]
+    lines = ["\n=== 可选表情包：按语境挑选，独立一条；reply.send的sticker填完整文件名，优先选择应景的已收集表情包 ==="]
+    if collected_pick:
+        lines.append("已收集表情包: " + ", ".join(collected_pick))
+    if personal_pick:
+        lines.append("自带表情: " + ", ".join(personal_pick))
+    if not collected_pick and not personal_pick:
+        lines.append(", ".join((others + personal)[:24]))
+    return "\n".join(lines)
 
 
 def lore_guidance(context):

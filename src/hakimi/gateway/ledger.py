@@ -80,14 +80,14 @@ def month_spend(base: Path, now=None) -> Decimal:
 
 def month_tokens(base: Path, now=None) -> dict:
     if not (base / LEDGER_NAME).exists():
-        return {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+        return {"requests": 0, "input_tokens": 0, "output_tokens": 0, "cached_tokens": 0}
     db = _ledger(base)
     try:
-        row = db.execute("SELECT COUNT(*), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM usage "
-                         "WHERE period=?", (period(now),)).fetchone()
+        row = db.execute("SELECT COUNT(*), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), "
+                         "COALESCE(SUM(cached_tokens),0) FROM usage WHERE period=?", (period(now),)).fetchone()
     finally:
         db.close()
-    return {"requests": row[0], "input_tokens": row[1], "output_tokens": row[2]}
+    return {"requests": row[0], "input_tokens": row[1], "output_tokens": row[2], "cached_tokens": row[3]}
 
 
 def _limit(config):

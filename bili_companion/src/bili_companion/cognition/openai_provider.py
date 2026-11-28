@@ -248,7 +248,7 @@ class OpenAICompatibleClient:
         if self.reasoning_effort is not None and self.reasoning_effort_model in (None,model):
             data['reasoning_effort']=self.reasoning_effort
         if self.send_json_mode and generation.get('responseMimeType')=='application/json':data['response_format']={'type':'json_object'}
-        if len(json.dumps(data).encode())>24*1024*1024:raise CognitionUnavailable('provider_request_too_large')
+        if len(json.dumps(data,ensure_ascii=False).encode('utf-8'))>24*1024*1024:raise CognitionUnavailable('provider_request_too_large')
         self._prepared.envelope = envelope
         self._prepared.cache = (fingerprint, data, envelope, self._prepared.media_sources)
         return data
@@ -334,7 +334,7 @@ class OpenAICompatibleClient:
                 headers['Accept']='text/event-stream'
         before=self.usage_snapshot(model) if self.usage_panel_actual_cost else None
         try:
-            request=Request(url,data=json.dumps(data,allow_nan=False).encode(),method='POST',headers=headers)
+            request=Request(url,data=json.dumps(data,ensure_ascii=False,allow_nan=False).encode('utf-8'),method='POST',headers=headers)
             with opener.open(request,timeout=self.timeout) as response:
                 if response.geturl()!=url:raise CognitionUnavailable('provider_redirect')
                 raw=response.read(2*1024*1024+1)

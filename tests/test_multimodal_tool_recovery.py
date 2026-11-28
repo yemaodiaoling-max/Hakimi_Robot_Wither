@@ -52,8 +52,9 @@ class MediaToolTests(unittest.IsolatedAsyncioTestCase):
         menu=execute({'tool':'tools.list','input':{}},claim,self.c,self.base)['result']['tools']
         self.assertIn('image.read',{r['name'] for r in menu});self.assertNotIn('stickers.collect',{r['name'] for r in menu})
         listed=execute({'tool':'images.list','input':{}},claim,self.c,self.base)
-        self.assertEqual(listed['result']['paths'],[str(self.image)])
-        request=parse_response(json.dumps({'action':'tool','text':'','tool':'image.read','input':{'path':str(self.image)},'sticker':None}))
+        from hakimi.core.media_codes import image_code
+        self.assertEqual(listed['result']['images'],[image_code(self.image)])
+        request=parse_response(json.dumps({'action':'tool','text':'','tool':'image.read','input':{'path':'#'+image_code(self.image)},'sticker':None}))
         async def generate(prompt,active):
             self.assertEqual(len(active['_images']),1)
             pixels=active['_images'][0];self.assertTrue(base64.b64decode(pixels['data']).startswith(b'\xff\xd8'))
