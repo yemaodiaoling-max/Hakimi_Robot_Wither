@@ -34,6 +34,64 @@ def text_batch(rows, *, context=(), own_message_ids=(), focus_ids=(), include_se
     return result
 
 
+COLUMNS = ('message_id', 'speaker', 'text', 'audience', 'reply_to', 'reply_author', 'mentions')
+LEGEND = ('messages/previous_exchange每行按columns顺序排列，末尾空列已省略；speaker/reply_author/mentions用speakers别名'
+          '（别名->[user_id,name]，SELF即哈基米），不在speakers中的保持原值')
+
+
+def encode_messages(request):
+    """Replace repeated per-row identity keys by one speakers table and columns+rows.
+
+    Lossless: decode_messages() restores the original item dicts exactly. Message
+    IDs (aliases such as '3' or 'h1') are untouched, so selections map back as before.
+    """
+    groups = [key for key in ('messages', 'previous_exchange') if request.get(key)]
+    speakers, by_user = {}, {}
+    for key in groups:
+        for item in request[key]:
+            uid, name = str(item.get('user_id', '')), str(item.get('name', ''))
+            if (uid, name) in speakers or not (uid or name):
+                continue
+            alias = 'SELF' if uid == 'SELF' and 'SELF' not in speakers.values() else 'u' + str(len(speakers) + 1)
+            speakers[(uid, name)] = alias
+            by_user.setdefault(uid, alias)
+    ref = lambda value: by_user.get(str(value), str(value))
+    for key in groups:
+        rows = []
+        for item in request[key]:
+            uid, name = str(item.get('user_id', '')), str(item.get('name', ''))
+            cells = [item['message_id'], speakers.get((uid, name), ''), item['text'], item.get('audience', ''),
+                     item.get('reply_to', ''), ref(item['reply_author']) if item.get('reply_author') else '',
+                     [ref(value) for value in item.get('mentions', ())]]
+            while cells and not cells[-1]:cells.pop()
+            rows.append(cells)
+        request[key] = rows
+    if groups:
+        request['speakers'] = {alias: [uid, name] if name else [uid] for (uid, name), alias in speakers.items()}
+        request['columns'] = list(COLUMNS)
+        request['format'] = LEGEND
+    return request
+
+
+def decode_messages(request, key='messages'):
+    """Inverse of encode_messages for one group; used for verification and tests."""
+    table = {alias: (value[0], value[1] if len(value) > 1 else '') for alias, value in request.get('speakers', {}).items()}
+    users = {}
+    for alias, (uid, _) in table.items():users.setdefault(uid, alias)
+    originals = {alias: uid for uid, alias in users.items()}
+    items = []
+    for cells in request.get(key, ()):
+        cell = dict(zip(request['columns'], cells))
+        uid, name = table.get(cell.get('speaker', ''), ('', ''))
+        item = {'user_id': uid, 'name': name, 'text': cell['text'], 'audience': cell.get('audience', ''),
+                'message_id': cell['message_id']}
+        if cell.get('reply_to'):item['reply_to'] = cell['reply_to']
+        if cell.get('reply_author'):item['reply_author'] = originals.get(cell['reply_author'], cell['reply_author'])
+        if cell.get('mentions'):item['mentions'] = [originals.get(v, v) for v in cell['mentions']]
+        items.append({k: v for k, v in item.items() if v or k == 'message_id'})
+    return items
+
+
 def select_messages(rows, previous_reply, base, runner=None, *, context=(), own_message_ids=(), focus_ids=(), limit=None, timeout_seconds=30, history=()):
     batch = text_batch(rows,context=context,own_message_ids=own_message_ids,focus_ids=focus_ids)
     if not batch:
@@ -81,7 +139,7 @@ def select_messages(rows, previous_reply, base, runner=None, *, context=(), own_
                 request.pop('previous_reply', None)  # Actual delivered segments already carry the answer.
     request['output_format'] = {'selected_message_ids': ['message_id']}
     request['task'] += ' 只返回符合output_format的JSON对象，selected_message_ids是消息编号字符串数组；不要返回正文或其他字段。'
-    task = json.dumps(request, ensure_ascii=False, separators=(',', ':'))
+    task = json.dumps(encode_messages(request), ensure_ascii=False, separators=(',', ':'))
     if runner is None:
         runner = lambda task, base: run_judge(task, base, timeout_seconds=timeout_seconds,
                                              thinking="off" if focus_ids else "low")

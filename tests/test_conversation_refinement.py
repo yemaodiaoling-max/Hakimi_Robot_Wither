@@ -47,11 +47,12 @@ class RefinementTests(unittest.TestCase):
         rows = [{'message_id':'8165862396903856010', 'user_id':'42', 'nickname':'小树',
                  'text':'小树问：那一步为什么？', 'received_at':100}]
         def runner(task, base):
-            data=json.loads(task)
-            self.assertEqual(data['messages'][0]['name'], '小树')
-            self.assertEqual(data['messages'][0]['text'], rows[0]['text'])
+            data=json.loads(task);decoded=judge.decode_messages(data)
+            self.assertEqual(decoded[0]['name'], '小树')
+            self.assertEqual(decoded[0]['text'], rows[0]['text'])
             self.assertEqual(data['focus_message_ids'], ['1'])
-            self.assertNotIn('received_at', data['messages'][0])
+            self.assertNotIn('received_at', data['columns'])
+            self.assertNotIn('8165862396903856010', task)
             return {'selected_message_ids':['1']}
         self.assertEqual(judge.select_messages(rows,'','.',runner=runner,
             focus_ids=[rows[0]['message_id']],limit=12),[rows[0]['message_id']])

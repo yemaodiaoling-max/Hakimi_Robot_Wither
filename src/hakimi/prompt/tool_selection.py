@@ -47,6 +47,39 @@ def discoverable_names(payload, names, selected):
     return names - (INTENT_ONLY - selected)
 
 
+# Tools whose selection is only a relevance hint; tools.list can load them on
+# any non-review turn. Drawing and voice are offered per turn, so never sticky.
+STICKY = (OPTIONAL | ON_DEMAND) - INTENT_ONLY
+
+
+def sticky_names(payload, names, selected, base=None, *, research=False, now=None):
+    """Keep tools this session needed recently, so declarations stay stable.
+
+    Review turns are unchanged, and remembered tools are intersected with what
+    this turn could discover, so stickiness never offers a gated tool.
+    """
+    selected = set(selected)
+    if isinstance(payload.get('internal_review'), dict):
+        return selected
+    from hakimi import paths
+    from hakimi.prompt import tool_sticky
+    base = paths.base() if base is None else base
+    # Research turns declare ON_DEMAND by default; that is not a recent need.
+    fresh = selected & (STICKY - ON_DEMAND if research else STICKY)
+    recent = tool_sticky.touch(base, payload.get('session_key'), fresh, now=now)
+    return selected | (recent & STICKY & discoverable_names(payload, set(names), selected))
+
+
+def remember_tools(payload, added, base=None, *, now=None):
+    """Keep tools loaded during a turn declared for the session's next turns."""
+    if isinstance(payload.get('internal_review'), dict):
+        return
+    from hakimi import paths
+    from hakimi.prompt import tool_sticky
+    base = paths.base() if base is None else base
+    tool_sticky.touch(base, payload.get('session_key'), set(added) & STICKY, now=now)
+
+
 def select_names(payload, names, base=None, *, hints=(), research=False):
     names = set(names)
     if isinstance(payload.get('internal_review'), dict):

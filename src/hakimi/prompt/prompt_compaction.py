@@ -174,19 +174,66 @@ def _reference_vertical_notes(result):
             memory_id = match.group(1)
             by_id[memory_id] = None if memory_id in by_id else note
     references = {note: memory_id for memory_id, note in by_id.items() if note is not None}
-    if not references:
-        return
+    positions = {}
+    for index, note in enumerate(notes):
+        if isinstance(note, str):
+            positions.setdefault(note, index)
 
     threads = dict(threads)
-    # A memory_id points to the full, identically worded note in scoped_memory_data.
+    positional_used = False
+    saved = 0
+
+    def wire_size(value):
+        return len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+
+    # A memory_id points to the full, identically worded note in scoped_memory_data;
+    # notes without an M id are pointed to by their 0-based position there.
+    for category in ('person_and_commitments', 'topics_and_episodes'):
+        items = threads.get(category)
+        if isinstance(items, list):
+            wired = []
+            for item in items:
+                if isinstance(item, str) and item in references:
+                    wired.append({'memory_id': references[item]})
+                elif isinstance(item, str) and item in positions and \
+                        wire_size({'note': positions[item]}) < wire_size(item):
+                    wired.append({'note': positions[item]})
+                    saved += wire_size(item) - wire_size({'note': positions[item]})
+                    positional_used = True
+                else:
+                    wired.append(item)
+            threads[category] = wired
+    if threads == axes.get('vertical_threads'):
+        return
+    if positional_used:
+        if saved <= wire_size(_NOTE_LEGEND) + 16:
+            # The legend would cost more than it saves; keep the literal notes.
+            return _reference_vertical_notes_ids_only(result, notes, axes, references)
+        axes = _with_legend(axes, _NOTE_LEGEND)
+    result['rolling_and_axial_memory'] = dict(axes, vertical_threads=threads)
+
+
+_NOTE_LEGEND = '{"note":i}=scoped_memory_data[i]原文(0起)'
+_TIMELINE_LEGEND = '时间线数字i=scoped_memory_data[i]对应的时间线行(id取原文前15字,excerpt取前100字)'
+
+
+def _with_legend(axes, part):
+    existing = axes.get('note_refs')
+    if existing == part or (isinstance(existing, str) and part in existing):
+        return axes
+    return dict(axes, note_refs=part if not existing else f'{existing}；{part}')
+
+
+def _reference_vertical_notes_ids_only(result, notes, axes, references):
+    threads = dict(axes['vertical_threads'])
     for category in ('person_and_commitments', 'topics_and_episodes'):
         items = threads.get(category)
         if isinstance(items, list):
             threads[category] = [
                 {'memory_id': references[item]} if isinstance(item, str) and item in references else item
-                for item in items
-            ]
-    result['rolling_and_axial_memory'] = dict(axes, vertical_threads=threads)
+                for item in items]
+    if threads != axes['vertical_threads']:
+        result['rolling_and_axial_memory'] = dict(axes, vertical_threads=threads)
 
 
 def reference_timeline_excerpts(context):
@@ -211,13 +258,31 @@ def reference_timeline_excerpts(context):
                              'time': header[2].strip(), 'excerpt': header[3].strip()[:100]}
                             if header else None)
 
+    # Rows of notes without a (unique) M id are derived from the note's position.
+    from hakimi.memory.rolling_context import timeline_row
+    row_positions = {}
+    for index, note in enumerate(notes):
+        if isinstance(note, str):
+            row_positions.setdefault(json.dumps(timeline_row(note), ensure_ascii=False, sort_keys=True), index)
+
     # Preserve literal rows (including extra fields) alongside references.
     rows = []
     referenced_rows = []
+    positional_used = False
     for row in timeline:
         memory_id = row.get('id') if isinstance(row, dict) else None
         expected = by_id.get(memory_id) if isinstance(memory_id, str) else None
         full_match = expected is not None and row == expected
+        if not full_match and isinstance(row, dict):
+            try:
+                position = row_positions.get(json.dumps(row, ensure_ascii=False, sort_keys=True))
+            except (TypeError, ValueError):
+                position = None
+            if position is not None:
+                rows.append(row)
+                referenced_rows.append(position)
+                positional_used = True
+                continue
         if expected is not None and row.get('excerpt') == expected['excerpt']:
             reference = {'scoped_memory_id': memory_id, 'body_prefix_chars': 100}
             reference_size = len(json.dumps(reference, separators=(',', ':')))
@@ -233,8 +298,11 @@ def reference_timeline_excerpts(context):
         grouped = {'rows': referenced_rows, 'id_source': 'scoped_memory_data', 'body_prefix_chars': 100}
         def wire_size(value):
             return len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
-        if wire_size(grouped) < wire_size(rows):
+        legend_cost = wire_size(_TIMELINE_LEGEND) + 16 if positional_used else 0
+        if wire_size(grouped) + legend_cost < wire_size(rows):
             timeline_wire = grouped
+            if positional_used:
+                axes = _with_legend(axes, _TIMELINE_LEGEND)
     if timeline_wire == timeline:
         return context
     return dict(context, rolling_and_axial_memory=dict(axes, horizontal_timeline=timeline_wire))
@@ -246,7 +314,8 @@ def lossless_context(context):
     Missing fields are represented separately from explicit null. Identical
     message IDs are references only when every field is exactly identical.
     Repeated identities may share a speaker table; every name/ID is retained.
-    Repeated scoped notes can be referenced by memory_id in the vertical threads.
+    Repeated scoped notes are referenced by memory_id ({"memory_id":"M1"}) or, without
+    an M id, by position ({"note":i}) in the vertical threads and timeline rows.
     Quotes of visible messages and authorized image paths are references
     (``(id=N)`` and ``#code``) that tools resolve back to the same data.
     """
@@ -317,7 +386,8 @@ def lossless_context(context):
                         for index, absent in missing.items()}
                 candidates.append(factored)
         result[key] = min(candidates, key=lambda value: len(wire(value)))
-    return result
+    # Idempotent: the Vertex prompt applies it again to the same value.
+    return reference_timeline_excerpts(result)
 
 
 def compact_tool_result(output):

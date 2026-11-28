@@ -14,10 +14,11 @@ class ContinuationHistoryTests(unittest.TestCase):
         rows = [{'message_id': '103', 'user_id': '42', 'nickname': '群友8eed', 'text': '又是断臂又是无貌', 'reply_to': '102'}]
         def runner(task, base):
             request = json.loads(task)
-            self.assertEqual([r['text'] for r in request['previous_exchange']], [r['text'] for r in history])
-            self.assertEqual(request['previous_exchange'][0]['name'], '群友8eed')
-            self.assertEqual([r['text'] for r in request['messages']], ['又是断臂又是无貌'])
-            self.assertEqual(request['messages'][0]['reply_to'], 'h3')
+            exchange, current = judge.decode_messages(request, 'previous_exchange'), judge.decode_messages(request)
+            self.assertEqual([r['text'] for r in exchange], [r['text'] for r in history])
+            self.assertEqual(exchange[0]['name'], '群友8eed')
+            self.assertEqual([r['text'] for r in current], ['又是断臂又是无貌'])
+            self.assertEqual(current[0]['reply_to'], 'h3')
             self.assertNotIn('previous_reply', request)
             return {'selected_message_ids': ['h1', '1']}
         self.assertEqual(judge.select_messages(rows, 'duplicate answer', '.', runner=runner, history=history), ['103'])

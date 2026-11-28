@@ -18,10 +18,10 @@ class MentionSelectionTests(unittest.TestCase):
     def test_wider_input_keeps_focus_and_caps_final_window(self):
         rows=[row(i) for i in range(1,81)];seen=[]
         def runner(task,base):
-            data=json.loads(task);seen.append(data)
+            data=json.loads(task);data['decoded']=judge.decode_messages(data);seen.append(data)
             return {'selected_message_ids':[str(i) for i in range(1,81)]}
         ids=judge.select_messages(rows,'前次回复',Path('.'),runner,focus_ids=['80'],limit=12)
-        self.assertEqual(len(seen[0]['messages']),80)
+        self.assertEqual(len(seen[0]['decoded']),80)
         self.assertEqual(seen[0]['focus_message_ids'],['80'])
         self.assertEqual(len(ids),12);self.assertIn('80',ids)
         selected=[r for r in rows if r['message_id'] in ids]
@@ -37,11 +37,11 @@ class MentionSelectionTests(unittest.TestCase):
     def test_own_history_and_image_question_are_candidates(self):
         rows=[dict(row(1),user_id='SELF'),dict(row(2),text='',image_paths=['example.jpg'])]
         seen=[]
-        def runner(task,base):seen.append(json.loads(task));return {'selected_message_ids':[]}
+        def runner(task,base):seen.append(dict(json.loads(task)));seen[-1]['decoded']=judge.decode_messages(seen[-1]);return {'selected_message_ids':[]}
         ids=judge.select_messages(rows,'',Path('.'),runner,focus_ids=['2'],limit=12)
         self.assertEqual(ids,['2'])
-        self.assertEqual(len(seen[0]['messages']),2)
-        self.assertEqual(seen[0]['messages'][-1]['text'],'[图片]')
+        self.assertEqual(len(seen[0]['decoded']),2)
+        self.assertEqual(seen[0]['decoded'][-1]['text'],'[图片]')
 
 
 class MentionQueueTests(unittest.IsolatedAsyncioTestCase):

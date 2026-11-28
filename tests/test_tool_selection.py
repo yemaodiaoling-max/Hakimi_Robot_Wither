@@ -95,9 +95,14 @@ class DirectToolSelectionTests(unittest.TestCase):
         self.assertIn(('memory.graph', {'topic': '校园夜景'}), [item.args[:2] for item in session.tool_runner.call_args_list])
         self.assertTrue(result['reply_submitted'])
 
-        # Discovery does not leak to the next event, even on the same session.
+        # Loaded tools stay declared for the same session's next events, which
+        # keeps the tool prefix stable; another session starts lazily again.
         provider.side_effect = [response(call('reply.send', text='早呀'))]
         session.generate('下一轮', Mock(), {'token': 'T2', 'payload': event()})
+        self.assertEqual(schemas(provider.call_args.args[0]).keys(),
+                         schemas(first).keys() | {'memory.graph', 'image.read'})
+        provider.side_effect = [response(call('reply.send', text='早呀'))]
+        session.generate('别的群', Mock(), {'token': 'T3', 'payload': dict(event(), session_key='group:9')})
         self.assertEqual(schemas(provider.call_args.args[0]), schemas(first))
 
     def test_unknown_drawing_and_unoffered_voice_cannot_be_loaded(self):

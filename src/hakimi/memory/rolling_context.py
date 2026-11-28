@@ -437,6 +437,26 @@ def advance_rolling_window(
     return steady_messages, state
 
 
+def timeline_row(line: str) -> dict:
+    """The horizontal_timeline row derived from one scoped note (pure)."""
+    # Extract timestamp or note label for timeline
+    m_match = re.search(r"\[M(\d+)\]\s*([^·]+)·(?:记)?([0-9\-\s:]+)：(.*)", line)
+    if m_match:
+        mid, label, timestr, excerpt = m_match.groups()
+        return {
+            "id": f"M{mid}",
+            "label": label.strip(),
+            "time": timestr.strip(),
+            "excerpt": excerpt.strip()[:100],
+        }
+    return {
+        "id": line[:15],
+        "label": "记忆",
+        "time": "近期",
+        "excerpt": line[:100],
+    }
+
+
 def build_memory_axes(
     notes: list[str],
     rolling_bridge: dict,
@@ -466,23 +486,7 @@ def build_memory_axes(
         else:
             vertical_topics.append(line)
 
-        # Extract timestamp or note label for timeline
-        m_match = re.search(r"\[M(\d+)\]\s*([^·]+)·(?:记)?([0-9\-\s:]+)：(.*)", line)
-        if m_match:
-            mid, label, timestr, excerpt = m_match.groups()
-            timeline_items.append({
-                "id": f"M{mid}",
-                "label": label.strip(),
-                "time": timestr.strip(),
-                "excerpt": excerpt.strip()[:100],
-            })
-        else:
-            timeline_items.append({
-                "id": line[:15],
-                "label": "记忆",
-                "time": "近期",
-                "excerpt": line[:100],
-            })
+        timeline_items.append(timeline_row(line))
 
     return {
         "rolling_bridge": {

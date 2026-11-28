@@ -2,7 +2,7 @@ import json
 import unittest
 from pathlib import Path
 
-from hakimi.bridge.conversation_judge import select_messages, text_batch
+from hakimi.bridge.conversation_judge import decode_messages, select_messages, text_batch
 
 
 class ConversationAudienceTests(unittest.TestCase):
@@ -36,10 +36,10 @@ class ConversationAudienceTests(unittest.TestCase):
         rows=[{'message_id':'3','user_id':'alice','text':'@bob 猫猫也来一起看看','direct_targets':['bob']}]
         seen=[]
         def runner(task,base):
-            data=json.loads(task);seen.append(data)
+            data=json.loads(task);seen.append(data);data['decoded']=decode_messages(data)
             return {'selected_message_ids':['3']}
         self.assertEqual(select_messages(rows,'上一条回复',Path('.'),runner=runner),['3'])
-        self.assertEqual(seen[0]['messages'][0]['audience'],'other')
+        self.assertEqual(seen[0]['decoded'][0]['audience'],'other')
         self.assertIn('明确@对象优先于引用作者',seen[0]['task'])
         self.assertEqual(seen[0]['previous_reply'],'上一条回复')
 

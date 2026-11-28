@@ -46,7 +46,7 @@ class MediaCollector:
                 args += ["-ss", str(offset)]
             args += ["-i", url]
         args += ["-map", "0:v:0", "-map", "1:a:0" if target.audio_url else "0:a:0",
-                 "-t", str(duration), "-vf", "scale=426:-2,fps=5", "-c:v", "libx264",
+                 "-t", str(duration), "-vf", "scale=426:-2,fps=2", "-c:v", "libx264",
                  "-preset", "ultrafast", "-crf", "30", "-threads", "1", "-c:a", "aac", "-ac", "1",
                  "-ar", "16000", "-b:a", "32k", "-movflags", "+faststart", "-y", str(output)]
         started = self.clock()
@@ -123,9 +123,9 @@ class LiveRecorder:
         for url in ([self.target.url, self.target.audio_url] if self.target.audio_url else [self.target.url]):
             args += ["-rw_timeout", "12000000", "-headers", headers, "-i", url]
         args += ["-map", "0:v:0", "-map", "1:a:0" if self.target.audio_url else "0:a:0",
-                 "-vf", "setpts=PTS-STARTPTS,scale=426:-2,fps=5", "-af", "asetpts=PTS-STARTPTS",
+                 "-vf", "setpts=PTS-STARTPTS,scale=426:-2,fps=2", "-af", "asetpts=PTS-STARTPTS",
                  "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
-                 "-threads", "1", "-g", str(int(self.duration*5)), "-keyint_min", str(int(self.duration*5)), "-sc_threshold", "0",
+                 "-threads", "1", "-g", str(int(self.duration*2)), "-keyint_min", str(int(self.duration*2)), "-sc_threshold", "0",
                  "-force_key_frames", f"expr:gte(t,n_forced*{self.duration})",
                  "-c:a", "aac", "-ac", "1", "-ar", "16000", "-b:a", "32k",
                  "-f", "segment", "-segment_time", str(self.duration), "-segment_time_delta", "0.1", "-reset_timestamps", "1",

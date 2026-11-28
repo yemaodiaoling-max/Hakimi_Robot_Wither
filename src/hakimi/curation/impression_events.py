@@ -57,11 +57,22 @@ def discover(db,now):
                            (row['id'],row['record_id'],row['session'],row['user_id'],row['created_at'],status))
         db.execute('UPDATE cursors SET offset=? WHERE name=?',(row['id'],CURSOR))
 
-def _difference(previous,current):
+def _split(previous,current):
     prefix=len(os.path.commonprefix([previous,current]));a=previous[prefix:];b=current[prefix:]
     suffix=len(os.path.commonprefix([a[::-1],b[::-1]]))
     if suffix:a=a[:-suffix];b=b[:-suffix]
+    return a,b
+
+def _difference(previous,current):
+    a,b=_split(previous,current)
     return ('删去：'+a[:400]+'\n写入：'+b[:1000]).strip()
+
+def _without(text,part,label):
+    """Show a note excerpt once: a span already given in full by note_change becomes a pointer."""
+    return text.replace(part,label,1) if len(part)>len(label)+4 and part in text else text
+
+def _clock(value):
+    return time.strftime('%m-%d %H:%M',time.localtime(float(value)))
 
 def _packet(db,job):
     from hakimi.social.social_base import _evidence_involves
@@ -106,12 +117,20 @@ def _packet(db,job):
                          (r['session'],r['reply_to'])).fetchone() if r['reply_to'] else None
         from hakimi.memory.relationship_events import reaction_sources
         reactions = reaction_sources(db, r)
-        events.append({'reaction_replies':[text[:240] for text in reactions['replies']], 'reaction_notes':[text[-360:] for text in reactions['notes']], 'id':r['id'],'at':r['at'],'author':r['user_id'],'self_id':r['self_id'],
-                       'by_target':str(r['user_id'])==job['target'],'mentions':mentions,
-                       'reply_to':r['reply_to'],'reply_author':reply[0] if reply else '', 'text':r['text'][:200]})
-    return {'id':job['original_id'],'written_at':job['noted_at'],
-            'previous_note':previous[-300:],'note_change':_difference(previous,row['text']),
-            'current_note':row['text'][-1000:],'event_choices':[r['id'] for r in anchors],
+        # The constant self_id is dropped; its occurrences become SELF, the name the review prompt uses.
+        me=str(r['self_id'] or '')
+        who=lambda value:'SELF' if me and str(value)==me else value
+        event={'id':r['id'],'at':_clock(r['at']),'author':who(r['user_id']),'by_target':str(r['user_id'])==job['target'],
+               'mentions':[who(v) for v in mentions],'reply_to':r['reply_to'],'reply_author':who(reply[0]) if reply else '',
+               'reaction_replies':[text[:240] for text in reactions['replies']],'reaction_notes':[('〔见current_note〕' if len(text[-360:])>12 and text[-360:] in row['text'][-1000:] else text[-360:]) for text in reactions['notes']],
+               'text':r['text'][:200]}
+        events.append({k:v for k,v in event.items() if v or k in {'id','by_target'}})
+    deleted,written=_split(previous,row['text'])
+    note_tail=_without(row['text'][-1000:],written,'〔同写入〕') if len(written)<=1000 else row['text'][-1000:]
+    old_tail=_without(previous[-300:],deleted,'〔同删去〕') if len(deleted)<=400 else previous[-300:]
+    return {'id':job['original_id'],'written_at':_clock(job['noted_at']),
+            'previous_note':old_tail,'note_change':_difference(previous,row['text']),
+            'current_note':note_tail,'event_choices':[r['id'] for r in anchors],
             'events':events}
 
 def classify(packets,base,*,daily=()):

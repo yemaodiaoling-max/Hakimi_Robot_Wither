@@ -429,7 +429,8 @@ class VertexSession:
         submitted = False
         skipped = False
         review = isinstance(claim['payload'].get('internal_review'), dict)
-        from hakimi.prompt.tool_selection import discoverable_names, select_names
+        from hakimi.prompt.tool_selection import (discoverable_names, remember_tools,
+                                                  select_names, sticky_names)
         from hakimi.tools.drawing_intent import TOOL as DRAW_TOOL
         all_names = {row['name'] for row in declarations()}
         progress = getattr(self, '_carbon_progress', None)
@@ -438,6 +439,9 @@ class VertexSession:
                     or 'gemini-4-carbon' in (routing.get('model'), self.env.get('AGY_LLM_GATEWAY_MODELS')))
         active_names = select_names(claim['payload'], all_names, self.cwd,
                                     hints=claim.get('_prompt_tool_hints', ()), research=research)
+        # Tools lead the cached prefix: keep the session's recent tools declared.
+        active_names = sticky_names(claim['payload'], all_names, active_names, self.cwd,
+                                    research=research)
         available_names = discoverable_names(claim['payload'], all_names, active_names)
         from hakimi.models.memory_retrieval import MemoryRetrieval
         retrieval = MemoryRetrieval()
@@ -461,7 +465,9 @@ class VertexSession:
             while True:
                 if not coordinator.record_progress(claim['token']):
                     raise RuntimeError('vertex_turn_ownership_lost')
-                names = active_names - retrieval.names if retrieval.exhausted else active_names
+                # Exhausted retrieval tools stay declared (stable cached prefix);
+                # MemoryRetrieval.run answers their calls with retrieval_round_limit.
+                names = set(active_names)
                 if progress:
                     progress.remaining()
                     names = progress.prepare(names, self.contents)
@@ -606,10 +612,16 @@ class VertexSession:
                     ok = not output.get('error') and output.get('ok', True)
                     if call['name'] == 'tools.list' and ok:
                         requested = call_args.get('tool_name')
-                        if isinstance(requested, str) and requested in discoverable:
+                        # The model can only call declared tools, so this turn
+                        # still grows; later turns start with the tool declared.
+                        if (isinstance(requested, str) and requested in discoverable
+                                and requested not in active_names):
                             active_names.add(requested)
-                    if not ok and not review and self.last_error and self.last_error.get('tool') == call['name']:
+                            remember_tools(claim['payload'], {requested}, self.cwd)
+                    if (not ok and not review and self.last_error and self.last_error.get('tool') == call['name']
+                            and 'runtime.status' not in active_names):
                         active_names.add('runtime.status')
+                        remember_tools(claim['payload'], {'runtime.status'}, self.cwd)
                     if call['name'] == 'members.mention':
                         if ok and output.get('sent'):
                             submitted = True

@@ -103,9 +103,11 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(result['status'], 'SUCCESS')
         self.assertEqual(sum(name == 'memory.search' for name, _ in executed), 8)
         self.assertEqual(executed[-1], ('reply.send', {'text': 'done'}))
+        # The tools stay declared so the cached prefix is stable; the ninth
+        # search is answered by MemoryRetrieval instead of being executed.
         last_names = {d['name'] for d in requests[8]['tools'][0]['functionDeclarations']}
-        self.assertFalse(last_names & MemoryRetrieval.names)
-        self.assertIn('reply.send', last_names)
+        self.assertTrue({'memory.search', 'reply.send'} <= last_names)
+        self.assertTrue(all(request['tools'] == requests[0]['tools'] for request in requests))
         self.assertEqual(len(requests), 9)
 
     def test_existing_persona_keeps_short_style_and_conditional_detail(self):

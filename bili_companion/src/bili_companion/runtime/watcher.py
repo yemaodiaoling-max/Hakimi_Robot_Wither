@@ -111,6 +111,11 @@ class Watcher:
         self.decision_enabled=True
         self.recorder_skips=0
         self.video_failures={}
+        self.scene_gate=None
+        if config.get('static_gate',True):
+            from bili_companion.media.scene_gate import StaticSceneGate
+            self.scene_gate=StaticSceneGate(live_cap=config.get('static_gate_live_cap_seconds',240),
+                video_cap=config.get('static_gate_video_cap_seconds',360))
         self.next_retention_check=0
         def migrate(s):
             if s.get('runtime_version',0)<2:
@@ -427,6 +432,24 @@ class Watcher:
             duration=duration,offset=s['video']['position'],
             cancel_event=self.cancel_capture,epoch=epoch)
 
+    def static_skip(self,s,chunk,epoch,decision,seconds):
+        """Book-keep a chunk the scene gate judged static and silent (no model call).
+
+        next_observation_at is left alone, so the next chunk is gated again;
+        the gate's cap forces a real observation (and memory refresh) regularly.
+        """
+        streak=self.scene_gate.note_skip()
+        def update(current):
+            if current['watch_epoch']!=epoch:return
+            current.update(understanding_state='SAMPLED',last_error=None,
+                static_skips=current.get('static_skips',0)+1,last_static_skip_at=self.clock())
+            if s['video'] and current['video']:
+                current['video']['position']=max(current['video'].get('position',0),chunk.end)
+        self.state.change(update)
+        self.log('static_skip',epoch=epoch,start=chunk.start,end=chunk.end,modality=chunk.modality,
+            status='static_skip',streak=streak,gate_seconds=round(seconds,3),**decision.details)
+        return 'static_skip'
+
     async def step(self):
         if self.clock()>=self.next_retention_check:
             result=prune_activity(self.database,self.clock(),scope='watcher')
@@ -472,9 +495,17 @@ class Watcher:
                 self.log('perception_gap',epoch=epoch,start=chunk.start,end=chunk.end,
                     reason='budget_pacing',modality=chunk.modality)
                 return 'sample_skipped'
-            sample_started = self.clock()
             scope=Scope(self.account,'live_room' if s['live_session'] else 'video',
                 self.room if s['live_session'] else s['video']['bvid'])
+            gate_key=(scope.kind,scope.identity,chunk.session_id); gate_sig=None
+            if self.scene_gate is not None:
+                gate_started=time.monotonic()
+                decision,gate_sig=await asyncio.to_thread(self.scene_gate.check,chunk,gate_key,
+                    bool(s['live_session']),self.clock())
+                if self.state.snapshot()['watch_epoch']!=epoch:return 'stale_observation'
+                if decision.skip:
+                    return self.static_skip(s,chunk,epoch,decision,time.monotonic()-gate_started)
+            sample_started = self.clock()
             if s['video']:
                 latest=self.state.snapshot()
                 if latest['watch_epoch']!=epoch:return 'stale_observation'
@@ -525,7 +556,9 @@ class Watcher:
             count,action=self.remember_video(s,result,chunk) if s['video'] else (0,'continue')
             self.log('observed',epoch=epoch,start=chunk.start,end=chunk.end,
                 modality=chunk.modality,evidence_count=len(result.observation.evidence),status=result.status)
-            self.state.change(lambda current:current.update(understanding_state='SAMPLED',last_error=None))
+            self.state.change(lambda current:current.update(understanding_state='SAMPLED',last_error=None,
+                last_observed_at=self.clock()))
+            if gate_sig is not None:self.scene_gate.commit(gate_key,gate_sig,self.clock())
             self.schedule_observation(bool(s['live_session']), started_at=sample_started)
             if result.candidate and s['live_session']:
                 outcome=await asyncio.to_thread(self.executor.dispatch,result.candidate,self.state.snapshot,
@@ -707,11 +740,11 @@ class Watcher:
                     self.state.change(lambda current:current.update(last_error=type(exc).__name__,understanding_state='UNAVAILABLE'))
                     status='error'
                 if status=='error':consecutive_errors+=1
-                elif status in {'observed','sample_skipped'}:consecutive_errors=0
+                elif status in {'observed','sample_skipped','static_skip'}:consecutive_errors=0
                 current=self.state.snapshot()
                 delay=(error_backoff(consecutive_errors) if status=='error'
                     else 30 if status=='waiting_video_budget'
-                    else self.config.get('chunk_seconds',30) if current['video'] and status in {'observed','sample_skipped'}
+                    else self.config.get('chunk_seconds',30) if current['video'] and status in {'observed','sample_skipped','static_skip'}
                     else 1 if status not in {'error','paused_budget','selecting'} else 5)
                 waiters=[asyncio.create_task(self.stop_event.wait()),asyncio.create_task(self.wake_event.wait())]
                 try:await asyncio.wait(waiters,timeout=delay,return_when=asyncio.FIRST_COMPLETED)

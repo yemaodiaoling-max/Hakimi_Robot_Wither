@@ -168,33 +168,54 @@ def packets(db, window):
 
 
 def classifier_packet(packet):
-    """Use short source IDs and keep platform message IDs out of model output."""
+    """Use short source IDs and keep platform message IDs out of model output.
+
+    Lossless trims: constant self_id/session/speaker fields are dropped (self_id
+    occurrences read SELF), epoch floats become seconds after `t0`, and context
+    entries that repeat a sent_replies item are reduced to its b-id.
+    """
     messages = packet['messages']
     human = {str(row['message_id']): 'e'+str(index+1) for index, row in enumerate(messages)}
     bot = {}
+    sent = {str(row.get('message_id') or ''): row for row in packet.get('sent_replies', [])}
     for row in [*packet.get('sent_replies', []), *[item for row in messages for item in row.get('context', [])]]:
         mid = str(row.get('message_id') or '')
         if mid and mid not in bot:bot[mid] = 'b'+str(len(bot)+1)
+    stamps = [float(row['at']) for row in [*packet.get('sent_replies', []), *messages] if row.get('at') is not None]
+    t0 = min(stamps) if stamps else None
     def reference(value):
         return human.get(str(value), bot.get(str(value), 'outside_window'))
-    def reply(row):
-        item = {key:value for key,value in row.items() if key not in {'receipt', 'message_id'}}
+    def reply(row, listed=False):
         mid = str(row.get('message_id') or '')
+        if listed and mid in sent and mid in bot and str(row.get('text', '')) == str(sent[mid].get('text', ''))[:len(str(row.get('text', '')))]:
+            return bot[mid]
+        item = {key:value for key,value in row.items() if key not in {'receipt', 'message_id', 'speaker', 'user_id', 'kind'}}
         if mid in bot:item['id'] = bot[mid]
+        if item.get('at') is not None:item['at'] = round(float(item['at'])-t0)
         if isinstance(item.get('reply_to'), list):item['reply_to'] = [reference(value) for value in item['reply_to']]
         elif item.get('reply_to'):item['reply_to'] = reference(item['reply_to'])
-        return item
+        return {key:value for key,value in item.items() if value or key in {'text', 'at'}}
     result = {'messages': [], 'sent_replies': [reply(row) for row in packet.get('sent_replies', [])]}
+    if t0 is not None:
+        result['t0'] = time.strftime('%m-%d %H:%M:%S', time.localtime(t0))
+    sessions = {row.get('session') for row in messages if row.get('session')}
+    if len(sessions) == 1:result['session'] = next(iter(sessions))
     for index, row in enumerate(messages):
+        me = str(row.get('self_id') or '')
+        who = lambda value:'SELF' if me and str(value) == me else value
         item = {key:value for key,value in row.items()
-                if key not in {'message_id','context','reaction_replies'}
+                if key not in {'message_id','context','reaction_replies','self_id'}
+                and not (key == 'session' and len(sessions) == 1)
                 and not (key in {'mentions','reply_to','reply_author','reaction_notes'} and not value)}
+        for key in ('author', 'reply_author'):
+            if key in item:item[key] = who(item[key])
+        if 'mentions' in item:item['mentions'] = [who(value) for value in item['mentions']]
+        if item.get('at') is not None:item['at'] = round(float(item['at'])-t0)
         item['id'] = 'e'+str(index+1)
-        item['context'] = [reply(value) for value in row.get('context', [])]
+        item['context'] = [reply(value, True) for value in row.get('context', [])]
         if item.get('reply_to'):item['reply_to'] = reference(item['reply_to'])
         result['messages'].append(item)
     return result
-
 
 def source_id(value, messages):
     """Resolve only exact source aliases/IDs belonging to this one window."""
@@ -216,7 +237,7 @@ INSTRUCTION = (
     '"event_type":"类型","evidence":"人类消息原文片段","reaction_type":"反应类型",'
     '"reaction_source":"reply","reaction_evidence":"SELF回复或笔记原文片段","reason":"简述"}]}。'
     'event_id取自messages[].id(e1,e2...)，b开头id表示SELF回复；每轮最多选2条代表性事件且每人最多1条，无合适事件返回空列表。'
-    '明确@优先于引用目标；隐式互动结合邻近SELF回复与上下文衔接判定。'
+    '明确@优先于引用目标；context里的b编号指向sent_replies同号回复，at为相对t0的秒数；隐式互动结合邻近SELF回复与上下文衔接判定。'
 ) + CLASSIFICATION_PROTOCOL
 
 
