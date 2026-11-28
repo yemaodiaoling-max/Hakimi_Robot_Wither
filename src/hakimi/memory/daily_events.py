@@ -132,10 +132,12 @@ def _resolve_nicknames(db, session, user_ids):
     return resolved
 
 
-def prepare(db, now, *, with_impressions=False):
+def prepare(db, now, *, with_impressions=False, exclude_recovery=False):
     discover(db, now)
+    ordinary = ("AND NOT EXISTS(SELECT 1 FROM review_recovery_jobs v WHERE v.kind='daily' AND v.job=CAST(j.source_id AS TEXT)) "
+                if exclude_recovery else "")
     rows = db.execute("SELECT r.*,j.priority AS review_priority,j.attempts AS review_attempts FROM daily_event_jobs j JOIN records r ON r.id=j.source_id "
-                      "WHERE j.status='pending' AND j.next_attempt<=? AND r.state='active' AND r.text!='' "
+                      "WHERE j.status='pending' AND j.next_attempt<=? AND r.state='active' AND r.text!='' " + ordinary +
                       "ORDER BY j.priority,(j.attempts>0) DESC,r.at DESC,r.id DESC LIMIT 12", (now,)).fetchall()
     last = db.execute("SELECT value FROM memory_meta WHERE key='daily_events_last_attempt'").fetchone()
     oldest = db.execute("SELECT MIN(created_at) FROM daily_event_jobs WHERE status='pending'").fetchone()[0]
@@ -204,12 +206,12 @@ def validate(items, packets):
     return validated
 
 
-def apply(index, db, packets, items, now):
+def apply(index, db, packets, items, now, *, status='pending', update_cadence=True):
     """Recheck the exact raw input, then atomically save card and source metadata."""
     for item in items:
         rows = [db.execute('SELECT * FROM records WHERE id=?', (rid,)).fetchone() for rid in item['source_ids']]
         submitted = {p['id']: p for p in packets}
-        if any(db.execute('SELECT status FROM daily_event_jobs WHERE source_id=?', (rid,)).fetchone()[0] != 'pending'
+        if any(db.execute('SELECT status FROM daily_event_jobs WHERE source_id=?', (rid,)).fetchone()[0] != status
                for rid in item['source_ids']):
             continue
         if any(not r or r['state'] != 'active' or not r['text'] or
@@ -238,8 +240,9 @@ def apply(index, db, packets, items, now):
             db.execute('INSERT OR IGNORE INTO daily_event_cards VALUES (?,?,?,?,?)',
                        (card[0], observed, now, item['event_time'], json.dumps(sources, ensure_ascii=False)))
     for packet in packets:
-        db.execute("UPDATE daily_event_jobs SET status='done' WHERE source_id=? AND status='pending'", (packet['id'],))
-    db.execute("INSERT OR REPLACE INTO memory_meta VALUES ('daily_events_last_attempt',?)", (str(now),))
+        db.execute("UPDATE daily_event_jobs SET status='done' WHERE source_id=? AND status=?", (packet['id'],status))
+    if update_cadence:
+        db.execute("INSERT OR REPLACE INTO memory_meta VALUES ('daily_events_last_attempt',?)", (str(now),))
 
 
 def failed(db, packets, now):

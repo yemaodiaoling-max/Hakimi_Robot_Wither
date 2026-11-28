@@ -1542,7 +1542,26 @@ async def maybe_schedule_cold_topic(cfg,cold):
 
 
 async def relationship_review_loop():
-    """One bounded background lane. Event/due timers, never a speaking lock."""
+    """Run foreground review and its independently bounded historical lane."""
+    async with asyncio.TaskGroup() as tasks:
+        tasks.create_task(_relationship_review_foreground())
+        tasks.create_task(_relationship_review_backfill())
+
+
+async def _relationship_review_backfill():
+    from hakimi.memory import review_backfill
+    while True:
+        try:
+            result=await asyncio.to_thread(review_backfill.tick,BASE_DIR)
+            delay=15 if result.get('status')=='idle' else 1
+        except Exception:
+            report_fault(BASE_DIR,'review_backfill',code='REVIEW_BACKFILL_FAILED')
+            delay=30
+        await asyncio.sleep(delay)
+
+
+async def _relationship_review_foreground():
+    """Event/due timers, with no speaking lock."""
     from hakimi.curation import post_reply_review, impression_events
     # No network request in recover; restored live windows remain open.
     try:

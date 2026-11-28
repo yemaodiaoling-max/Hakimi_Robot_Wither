@@ -2,13 +2,16 @@
 import json
 import re
 import threading
+from http.client import HTTPException
 
+from hakimi.curation import review_sol_transport
 from hakimi.models import aux_config, gateway_text, video_hydrogen
 
 MAX_OUTPUT_TOKENS = 8192
 HAIKU_REVIEW_TIMEOUT = 120
 SYSTEM_PROMPT = '依据给定事件和原文证据完成定性复盘，仅返回任务指定的JSON对象。'
 _slot = threading.Lock()
+_historical_slot = threading.Lock()
 
 
 class ReviewAPIError(RuntimeError):
@@ -139,6 +142,15 @@ def _classify_companion_duty(text, base, config_path=None):
                               account='standby' if dedicated_review else None)
 
     try:
+        if config.get('qq_flash_low_profile') and (
+                config.get('qq_review_sol_profile') or config.get('video_selection_profile')):
+            from bili_companion.cognition.flash_duty import FLASH_LOW_MODEL
+
+            try:
+                return original(FLASH_LOW_MODEL, False)
+            except (client.CognitionUnavailable, OSError, HTTPException):
+                pass
+            return _classify_original_sol(messages, config)
         if dedicated_review or config.get('flash_duty_profile'):
             from bili_companion.cognition.flash_duty import run_text_duty
             return run_text_duty(config, 'review', original, standby)
@@ -151,12 +163,68 @@ def _classify_companion_duty(text, base, config_path=None):
         raise ReviewAPIError('REVIEW_API_UNAVAILABLE') from None
 
 
-def classify(task, base):
+def _classify_original_sol(messages, config):
+    try:
+        value = review_sol_transport.complete(config, messages, max_tokens=MAX_OUTPUT_TOKENS, timeout=90)
+    except ValueError as exc:
+        error = ReviewAPIError(str(exc))
+        code = error_code(error)
+        if code == 'REVIEW_FAILED':
+            code = 'REVIEW_API_INVALID_RESPONSE'
+        raise ReviewAPIError(code) from None
+    except (KeyError, TypeError, AttributeError, IndexError):
+        raise ReviewAPIError('REVIEW_API_INVALID_RESPONSE') from None
+    except Exception:
+        raise ReviewAPIError('REVIEW_API_UNAVAILABLE') from None
+    return _review_result(value, review_sol_transport.MODEL, strict=True, account='original')
+
+
+def _review_prompt(task):
     from hakimi.persona.prompt_language import prompt
+
+    text = prompt(task)
+    if len(text.encode('utf-8')) > 64000:
+        raise ReviewAPIError('REVIEW_API_INPUT_TOO_LARGE')
+    return text
+
+
+def _sol_backend(base):
+    config_path = None
+    if aux_config.has_config(base):
+        cfg = aux_config.review_config(base)
+        if not cfg.get('enabled', True) or cfg.get('mode') == 'disabled':
+            raise ReviewAPIError('REVIEW_DISABLED')
+        if cfg['mode'] != 'companion_duty':
+            raise ReviewAPIError('REVIEW_API_CONFIG')
+        config_path = cfg.get('config_path') or None
+    try:
+        _, config = video_hydrogen.review_backend(base, config_path=config_path)
+    except Exception:
+        raise ReviewAPIError('REVIEW_API_CONFIG') from None
+    return config
+
+
+def sol_backfill_enabled(base):
+    try:
+        review_sol_transport.verified_profile(_sol_backend(base))
+    except Exception:
+        return False
+    return True
+
+
+def classify_sol(task, base):
+    """Review historical work once on the same original-account Sol route."""
+    with _historical_slot:
+        text = _review_prompt(task)
+        return _classify_original_sol([
+            {'role': 'system', 'content': SYSTEM_PROMPT},
+            {'role': 'user', 'content': text},
+        ], _sol_backend(base))
+
+
+def classify(task, base):
     with _slot:
-        text = prompt(task)
-        if len(text.encode('utf-8')) > 64000:
-            raise ReviewAPIError('REVIEW_API_INPUT_TOO_LARGE')
+        text = _review_prompt(task)
         if aux_config.has_config(base):
             cfg = aux_config.review_config(base)
             if not cfg.get('enabled', True) or cfg.get('mode') == 'disabled':
@@ -210,7 +278,7 @@ def _review_result(value, model, *, strict=False, account=None):
         safe_usage['reasoning_tokens'] = reasoning
     metadata = {'reviewer': 'video_understanding_api', 'review_model': model,
                 'review_reported_model': value['model'], 'review_usage': safe_usage}
-    if recorded_haiku:
+    if recorded_haiku or model == review_sol_transport.MODEL:
         metadata['review_billing_state'] = value['_billing_state']
         if not usage_complete:
             metadata['review_usage_status'] = 'incomplete'
@@ -229,6 +297,7 @@ def error_code(exc):
     if isinstance(exc, ReviewAPIError):
         return value if value in {
             'REVIEW_DISABLED',
+            'REVIEW_BUDGET_PAUSED',
             'REVIEW_API_CONFIG', 'REVIEW_API_REDIRECT', 'REVIEW_API_INPUT_TOO_LARGE',
             'REVIEW_API_RESPONSE_TOO_LARGE', 'REVIEW_API_INCOMPLETE', 'REVIEW_API_INVALID_RESPONSE',
             'REVIEW_API_INVALID_USAGE', 'REVIEW_API_AUTH', 'REVIEW_API_QUOTA',

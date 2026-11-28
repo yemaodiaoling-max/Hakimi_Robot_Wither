@@ -133,8 +133,8 @@ def _packet(db,job):
             'current_note':note_tail,'event_choices':[r['id'] for r in anchors],
             'events':events}
 
-def classify(packets,base,*,daily=()):
-    from hakimi.curation.review_runtime import classify as run_review
+def classify(packets,base,*,daily=(),historical=False):
+    from hakimi.curation import review_runtime
     from hakimi.memory.daily_events import INSTRUCTION
     from hakimi.memory.relationship_policy import CLASSIFICATION_PROTOCOL
     task=(
@@ -148,6 +148,7 @@ def classify(packets,base,*,daily=()):
     if not packets:
         task='Return one JSON object directly with items:[], 评估daily_messages，顶层包含daily_events与relationship_events。'+CLASSIFICATION_PROTOCOL
     if daily:task+=INSTRUCTION
+    run_review=review_runtime.classify_sol if historical else review_runtime.classify
     return run_review(task+'\n'+json.dumps({'notes':packets,'daily_messages':list(daily)},
                         ensure_ascii=False,separators=(',',':')),base)
 
@@ -222,7 +223,8 @@ def apply(db,job,packet,item,now, *, direction=None, allow_revision=False):
     note=bool(job['record_id'] and job['original_id'])
     current=_baseline(db,scope,target)
     if job['record_id']:
-        _projection(db,job,now)
+        if not recovery:
+            _projection(db,job,now)
         db.execute("UPDATE social_assessments SET affinity=?,closeness=?,confidence=? WHERE original_record_id=? AND subject_id='hakimi' AND seed_id=''",
                    (current['affinity'],current['closeness'],current['confidence'],job['record_id']))
     def finished(outcome, reason=''):
@@ -352,9 +354,13 @@ def apply(db,job,packet,item,now, *, direction=None, allow_revision=False):
     return reviewed('revised' if old else 'applied' if any(deltas) else 'no_change', 'score_curve_no_movement' if changing and not any(deltas) else '')
 
 
-def _pending_recovery(db):
+def _pending_recovery(db, now):
     if not db.execute("SELECT 1 FROM sqlite_master WHERE name='review_recovery_jobs'").fetchone():return None
-    row=db.execute("SELECT r.* FROM review_recovery_jobs r LEFT JOIN impression_jobs n ON r.kind='note' AND CAST(n.original_id AS TEXT)=r.job LEFT JOIN daily_event_jobs d ON r.kind='daily' AND CAST(d.source_id AS TEXT)=r.job WHERE r.status='pending' AND ((r.kind='note' AND n.status='pending') OR (r.kind='daily' AND d.status='pending')) ORDER BY r.original_review_at,r.id LIMIT 1").fetchone()
+    row=db.execute("""SELECT r.* FROM review_recovery_jobs r
+        LEFT JOIN impression_jobs n ON r.kind='note' AND n.original_id=CAST(r.job AS INTEGER)
+        LEFT JOIN daily_event_jobs d ON r.kind='daily' AND d.source_id=CAST(r.job AS INTEGER)
+        WHERE r.status='pending' AND ((n.status='pending' AND n.next_attempt<=?) OR
+        (d.status='pending' AND d.next_attempt<=?)) ORDER BY r.original_review_at,r.id LIMIT 1""",(now,now)).fetchone()
     return dict(row) if row else None
 
 
@@ -381,33 +387,46 @@ def _current_choice(value,choices,packets=()):
         if len(found)==1:return found[0]
     return None
 
-def tick(base,now=None,*,runner=None):
+def tick(base,now=None,*,runner=None,backfill=None):
     """Invoked by the existing five-minute maintenance tick; no extra daemon."""
     from hakimi.memory.memory_store import store
-    from hakimi.memory import daily_events, relationship_events
+    from hakimi.memory import daily_events, relationship_events, review_backfill, review_recovery
     from hakimi.curation import review_runtime
     if runner is None and not review_runtime.is_enabled(base):
         return {'status':'idle','classified':0,'reason':'review_disabled'}
     real_time=now is None
     now=time.time() if real_time else now;index=store(str(Path(base).resolve()))
-    initialize(base)
+    if not backfill:
+        initialize(base)
+    job_status='backfill' if backfill else 'pending'
     with index.db() as db:
-        from hakimi.memory.relationship_history import maintain
-        maintain(db,now)
-        discover(db,now)
-        from hakimi.memory import review_recovery
-        recovery=_pending_recovery(db)
-        if recovery:
-            jobs=db.execute("SELECT * FROM impression_jobs WHERE original_id=? AND status='pending' AND next_attempt<=?",(recovery['job'],now)).fetchall() if recovery['kind']=='note' else []
+        if backfill:
+            db.execute('BEGIN IMMEDIATE')
+            if not review_backfill.current(db,backfill):
+                return {'status':'idle','classified':0}
+            recovery=review_recovery.load_metadata(db,backfill['kind'],backfill['job'])
+            daily=[]
         else:
-            jobs=db.execute("SELECT * FROM impression_jobs WHERE status='pending' AND next_attempt<=? ORDER BY original_id LIMIT 4",(now,)).fetchall()
+            from hakimi.memory.relationship_history import maintain
+            maintain(db,now)
+            discover(db,now)
+            review_recovery.ensure_metadata(db)
+            jobs=db.execute("""SELECT n.* FROM impression_jobs n WHERE n.status='pending' AND n.next_attempt<=?
+                AND NOT EXISTS(SELECT 1 FROM review_recovery_jobs r WHERE r.kind='note' AND r.job=CAST(n.original_id AS TEXT))
+                ORDER BY n.original_id LIMIT 4""",(now,)).fetchall()
+            daily=daily_events.prepare(db,now,with_impressions=bool(jobs),exclude_recovery=True)
+            recovery=_pending_recovery(db,now) if not jobs and not daily else None
+        if recovery:
+            jobs=db.execute("SELECT * FROM impression_jobs WHERE original_id=? AND status=?",(recovery['job'],job_status)).fetchall() if recovery['kind']=='note' else []
         packets=[];selected={}
         for row in jobs:
             job=dict(row)
             try:packet=_packet(db,job)
-            except (ValueError,KeyError) as exc:
-                db.execute("UPDATE impression_jobs SET status='error',reason=? WHERE original_id=?",(type(exc).__name__,job['original_id']))
-                continue
+            except (ValueError,KeyError,TypeError) as exc:
+                if not backfill:
+                    db.execute("UPDATE impression_jobs SET status='error',reason=? WHERE original_id=?",(type(exc).__name__,job['original_id']))
+                    continue
+                packet=None
             if not packet:
                 db.execute("UPDATE impression_jobs SET status='no_event',reason='本次时间窗口没有相关可读事件' WHERE original_id=?",(job['original_id'],))
                 if recovery:review_recovery.complete_metadata(db,'note',job['original_id'],now,'source_unavailable','原文证据已清理，本次补记未计分')
@@ -423,18 +442,23 @@ def tick(base,now=None,*,runner=None):
         if recovery:
             daily=[]
             if recovery['kind']=='daily':
-                ready=db.execute("SELECT status,next_attempt FROM daily_event_jobs WHERE source_id=?",(recovery['job'],)).fetchone()
-                if ready and ready['status']=='pending' and ready['next_attempt']<=now:
+                ready=db.execute("SELECT 1 FROM daily_event_jobs WHERE source_id=? AND status=?",(recovery['job'],job_status)).fetchone()
+                if ready:
                     source=_recovery_daily_packet(db,int(recovery['job']))
                     if source and review_recovery.eligible_event(db,source['id'],'daily',recovery['job']):daily=[source]
                     else:
                         status='already_reviewed' if source else 'source_unavailable'
                         db.execute("UPDATE daily_event_jobs SET status='done' WHERE source_id=?",(recovery['job'],))
                         review_recovery.complete_metadata(db,'daily',recovery['job'],now,status,'原事件已结算，本次仅补记零变化' if source else '原文证据已清理，本次补记未计分')
-        else:daily=daily_events.prepare(db,now,with_impressions=bool(packets))
-    if not packets and not daily:return {'status':'idle','classified':0}
+        if not packets and not daily:
+            if backfill:
+                review_backfill.finish(db,backfill)
+            return {'status':'idle','classified':0}
     try:
-        result=runner(packets,base) if runner else classify(packets,base,daily=daily)
+        if backfill and not review_backfill.debit(index,backfill):
+            return {'status':'idle','classified':0}
+        result=runner(packets,base) if runner else (
+            classify(packets,base,daily=daily,historical=True) if backfill else classify(packets,base,daily=daily))
         from hakimi.curation.review_runtime import reviewer_metadata
         review_metadata=reviewer_metadata(result)
         if daily and (not isinstance(result,dict) or 'daily_events' not in result):raise ValueError('missing_daily_events')
@@ -464,10 +488,19 @@ def tick(base,now=None,*,runner=None):
             mapped[key]=dict(item,id=key,event_id=event,reason=str(item.get('reason',''))[:240])
         with index.db() as db:
             db.execute('BEGIN IMMEDIATE')
+            if backfill and not review_backfill.current(db,backfill):
+                return {'status':'idle','classified':0}
+            fresh=False
+            active_ids={source['id'] for source in daily if db.execute(
+                'SELECT 1 FROM daily_event_jobs WHERE source_id=? AND status=?',(source['id'],job_status)).fetchone()}
+            daily=[source for source in daily if source['id'] in active_ids]
+            daily_items=[item for item in daily_items if set(item['source_ids'])<=active_ids]
+            relation_items=[item for item in relation_items if item['event_id'] in active_ids]
             for packet in packets:
                 job=dict(selected[packet['id']],**review_metadata)
                 state=db.execute('SELECT status FROM impression_jobs WHERE original_id=?',(job['original_id'],)).fetchone()
-                if state and state[0]=='pending':
+                if state and state[0]==job_status:
+                    fresh=True
                     if packet['id'] in mapped:apply(db,job,packet,mapped[packet['id']],now)
                     else:
                         from hakimi.memory.review_audit import record as audit
@@ -504,11 +537,17 @@ def tick(base,now=None,*,runner=None):
                           message_id=source.get('message_id',''),item=item,outcome=outcome,reason=reason,details=review_metadata)
             if isinstance(result,dict):
                 daily_at=review_recovery.review_clock(db,'daily',daily[0]['id'],now) if recovery and daily else now
-                daily_events.apply(index,db,daily,daily_items,daily_at)
+                daily_events.apply(index,db,daily,daily_items,daily_at,status=job_status,update_cadence=not backfill)
                 if recovery:
-                    db.execute("INSERT OR REPLACE INTO memory_meta VALUES ('daily_events_last_attempt',?)",(str(now),))
+                    if not backfill:
+                        db.execute("INSERT OR REPLACE INTO memory_meta VALUES ('daily_events_last_attempt',?)",(str(now),))
                     for source in daily:
-                        review_recovery.complete_metadata(db,'daily',source['id'],now,reason='已按原复盘时间补记完成，未额外重复计分')
+                        if review_recovery.load_metadata(db,'daily',source['id'])['status']=='pending':
+                            review_recovery.complete_metadata(db,'daily',source['id'],now,reason='已按原复盘时间补记完成，未额外重复计分')
+            if backfill:
+                review_backfill.finish(db,backfill)
+            elif not recovery and (fresh or any(source['source']!='prune' for source in daily)):
+                review_backfill.grant(db,base)
         return {'status':'completed','classified':len(packets),'daily_events':len(daily_items),'relationship_events':len(relation_items)}
     except Exception as exc:
         now=time.time() if real_time else now
@@ -516,14 +555,20 @@ def tick(base,now=None,*,runner=None):
         from hakimi.memory.review_audit import record as audit
         code=error_code(exc)
         with index.db() as db:
+            if backfill:
+                db.execute('BEGIN IMMEDIATE')
+                if not review_backfill.current(db,backfill):
+                    return {'status':'idle','classified':0}
             if recovery:
                 failed_at=review_recovery.review_clock(db,recovery['kind'],recovery['job'],now)
                 audit(db,failed_at,job=recovery['job'],source=recovery['kind'],outcome='error',error_code=code)
             else:audit(db,now,source='maintenance',outcome='error',error_code=code)
-            for uid in selected:
-                db.execute("UPDATE impression_jobs SET attempts=attempts+1,next_attempt=? + CASE attempts WHEN 0 THEN 30 WHEN 1 THEN 120 ELSE 300 END,status=CASE WHEN attempts>=3 THEN 'error' ELSE 'pending' END,reason=? WHERE original_id=? AND status='pending'",
-                           (now,code,uid))
-            daily_events.failed(db,daily,now)
+            if not backfill:
+                for uid in selected:
+                    db.execute("UPDATE impression_jobs SET attempts=attempts+1,next_attempt=? + CASE attempts WHEN 0 THEN 30 WHEN 1 THEN 120 ELSE 300 END,status=CASE WHEN attempts>=3 THEN 'error' ELSE 'pending' END,reason=? WHERE original_id=? AND status='pending'",
+                               (now,code,uid))
+                daily_events.failed(db,daily,now)
         from hakimi.features.codex_help import report_fault
-        report_fault(base,'impression_events',code=code)
+        if not backfill:
+            report_fault(base,'impression_events',code=code)
         return {'status':'error','reason':code}

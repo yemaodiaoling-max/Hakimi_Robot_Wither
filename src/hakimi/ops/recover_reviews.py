@@ -1,5 +1,6 @@
 """Explicit operator recovery of failed reviews; plan is read-only by default."""
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 from pathlib import Path
@@ -9,11 +10,16 @@ from hakimi.memory.review_recovery import (ensure_metadata,load_metadata,complet
                                            eligible_event)
 
 
+@contextmanager
 def _connect(base,readonly=False):
     path=Path(base)/'state/memory.sqlite3'
-    db=sqlite3.connect('file:'+str(path)+('?mode=ro' if readonly else '?mode=rw'),uri=True)
+    db=sqlite3.connect(path.resolve().as_uri()+('?mode=ro' if readonly else '?mode=rw'),uri=True)
     db.row_factory=sqlite3.Row
-    return db
+    try:
+        with db:
+            yield db
+    finally:
+        db.close()
 
 
 def _journal(base,name):
@@ -88,6 +94,19 @@ def _window_context(db,window,outbox,sent):
     first_receipt=matches[0][0]['reply_id']+':'+str(matches[0][1])
     if first_receipt not in used or not humans:return None
     return {'human_ids':humans,'replies':replies[-8:]}
+
+
+def restore_window(db,base,window):
+    """Rebuild only from matching outbound receipts and confirmed sends."""
+    context=_window_context(db,window,_journal(base,'outbox.jsonl'),_journal(base,'sent_messages.jsonl'))
+    if context is None:
+        return None
+    origins=[]
+    for event in context['human_ids']:
+        row=db.execute('SELECT origin FROM records WHERE id=?',(event,)).fetchone()
+        if row and row[0]:
+            origins.append(str(row[0]))
+    return {'human_ids':json.dumps(origins),'replies':json.dumps(context['replies'],ensure_ascii=False)}
 
 
 def plan_recovery(base):

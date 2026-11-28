@@ -10,6 +10,12 @@ hakimi config show config.json --where runtime
 
 `root` 指实例目录（`HAKIMI_ROOT`，安装脚本默认 `~/hakimi-data`），`runtime` 指其中的 `official_test_runtime/`（QQ 通道的运行目录，名字是历史遗留）。
 
+## 用视频账号复盘 QQ 事件
+
+使用 `companion_duty` 复盘时，可在复盘配置中把 `qq_review_sol_profile` 指向已验证的 `gpt-6.2-sol` 文本配置。它通过 Responses 接口使用 `low` 档，须与 `qq_flash_low_profile` 使用同一服务地址和账号；两个配置可以引用同一份密钥文件。当前模型调用失败时，原任务交给 Sol，结果仍按原事件校验和结算。
+
+每完成一轮常规复盘，后台可额外用 Sol 补最多 10 条历史任务，每次取一条有原文、尚未结算的任务。已发给供应商但失败的请求也占本轮一个名额，任务留待以后重试。成功结果按原事件时间入账，补跑本身不会触发下一批。复盘费用记在 `review` 分类下。
+
 ## 由设置面板管理的文件
 
 | 文件 | 位置 | 内容 |

@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import time
 
-from hakimi.memory import relationship_events, review_audit, review_recovery
+from hakimi.memory import relationship_events, review_audit, review_backfill, review_recovery
 from hakimi.curation import impression_events
 
 
@@ -104,9 +104,14 @@ def recover(base, scheduler, now):
 
 
 def _prune(db, now):
-    # Successful jobs retain metadata only; failed payloads remain bounded for recovery; audit is separately capped at 1000/7d.
+    # Successful jobs retain metadata only. Failed windows keep their bounded
+    # payload until a historical review can account for the original evidence.
     db.execute("UPDATE reply_review_windows SET human_ids='[]',replies='[]' WHERE status='done'")
-    db.execute("DELETE FROM reply_review_windows WHERE status IN ('done','error') AND (updated_at<? OR id NOT IN (SELECT id FROM reply_review_windows ORDER BY updated_at DESC LIMIT 128))", (now-7*86400,))
+    historical = db.execute("SELECT 1 FROM sqlite_master WHERE name='review_backfill_state'").fetchone()
+    if historical:
+        db.execute("DELETE FROM reply_review_windows WHERE status='done' AND (updated_at<? OR id NOT IN (SELECT id FROM reply_review_windows WHERE status='done' ORDER BY updated_at DESC LIMIT 128))", (now-7*86400,))
+    else:
+        db.execute("DELETE FROM reply_review_windows WHERE status IN ('done','error') AND (updated_at<? OR id NOT IN (SELECT id FROM reply_review_windows ORDER BY updated_at DESC LIMIT 128))", (now-7*86400,))
     # Admission is bounded even if the remote provider remains unavailable.
     excess = db.execute("SELECT id FROM reply_review_windows WHERE status IN ('ready','retry') ORDER BY updated_at DESC LIMIT -1 OFFSET 128").fetchall()
     for row in excess:
@@ -241,45 +246,69 @@ INSTRUCTION = (
 ) + CLASSIFICATION_PROTOCOL
 
 
-def tick(base, now=None, *, runner=None):
+def tick(base, now=None, *, runner=None, backfill=None):
     from hakimi.memory.memory_store import store
-    from hakimi.curation.review_runtime import classify, error_code, is_enabled
+    from hakimi.curation import review_runtime
+    from hakimi.curation.review_runtime import error_code, is_enabled
     if runner is None and not is_enabled(base):
         return {'status': 'idle', 'reason': 'review_disabled'}
     real_time = now is None
     now = time.time() if real_time else now
     index = store(str(Path(base).resolve()))
     impression_events.initialize(base)
+    if not backfill:
+        with index.db() as db:
+            initialize(db)
+            if not db.execute("SELECT 1 FROM reply_review_windows WHERE status IN ('ready','retry') AND next_attempt<=? LIMIT 1", (now,)).fetchone():
+                return {'status':'idle'}
+        # Import the ordinary inbox only when a ready window needs its source IDs.
+        index.sync()
     with index.db() as db:
-        initialize(db)
-        if not db.execute("SELECT 1 FROM reply_review_windows WHERE status IN ('ready','retry') AND next_attempt<=? LIMIT 1", (now,)).fetchone():
-            return {'status':'idle'}
-    # Import the ordinary inbox only when a ready window needs its source IDs.
-    index.sync()
-    with index.db() as db:
-        initialize(db)
-        window = db.execute("SELECT * FROM reply_review_windows WHERE status IN ('ready','retry') AND next_attempt<=? ORDER BY next_attempt,created_at LIMIT 1", (now,)).fetchone()
+        if backfill:
+            window = db.execute("SELECT * FROM reply_review_windows WHERE id=? AND status='backfill'", (backfill['job'],)).fetchone()
+        else:
+            db.execute('BEGIN IMMEDIATE')
+            review_recovery.ensure_metadata(db)
+            window = db.execute("""SELECT w.* FROM reply_review_windows w LEFT JOIN review_recovery_jobs r
+                ON r.kind='window' AND r.job=w.id WHERE w.status IN ('ready','retry') AND w.next_attempt<=?
+                ORDER BY (r.id IS NOT NULL),w.next_attempt,w.created_at LIMIT 1""", (now,)).fetchone()
         if not window:
             return {'status':'idle'}
-        review_recovery.ensure_metadata(db)
-        recovery_window = db.execute("""SELECT w.* FROM reply_review_windows w JOIN review_recovery_jobs r
-            ON r.kind='window' AND r.job=w.id WHERE r.status='pending'
-            AND w.status IN ('ready','retry') AND w.next_attempt<=?
-            ORDER BY r.original_review_at,r.id LIMIT 1""",(now,)).fetchone()
-        window = dict(recovery_window or window)
-        db.execute("UPDATE reply_review_windows SET status='processing' WHERE id=?", (window['id'],))
+        window = dict(window)
+        if not backfill:
+            db.execute("UPDATE reply_review_windows SET status='processing',updated_at=? WHERE id=?", (now,window['id']))
         packet = packets(db,window)
+        if backfill and (not packet['messages'] or not packet['sent_replies']):
+            from hakimi.ops.recover_reviews import restore_window
+            restored = restore_window(db,base,window)
+            if restored:
+                window.update(restored)
+                packet = packets(db,window)
+            if not packet['sent_replies']:
+                packet['messages'] = []
         recovery = review_recovery.load_metadata(db,'window',window['id'])
         review_at = review_recovery.review_clock(db,'window',window['id'],now)
+        has_sources = bool(packet['messages'])
         if recovery:
             packet['messages'] = [p for p in packet['messages'] if review_recovery.eligible_event(db,p['id'],'window',window['id'])]
         if not packet['messages']:
+            if backfill:
+                db.execute('BEGIN IMMEDIATE')
+                if not review_backfill.current(db,backfill):
+                    return {'status':'idle'}
             review_audit.record(db,review_at,job=window['id'],source='window',outcome='skip',reason='already_reviewed' if recovery else 'no_readable_human_source')
-            review_recovery.complete_metadata(db,'window',window['id'],now,status='already_reviewed' if recovery else 'done')
+            review_recovery.complete_metadata(db,'window',window['id'],now,
+                status='already_reviewed' if has_sources else 'source_unavailable',
+                reason='原事件已结算，本次仅补记零变化' if has_sources else '原始来源不足，本次补记未计分')
             db.execute("UPDATE reply_review_windows SET status='done' WHERE id=?", (window['id'],))
+            if backfill:
+                review_backfill.finish(db,backfill)
             _prune(db,now)
             return {'status':'completed','reviewed':0}
     try:
+        if backfill and not review_backfill.debit(index,backfill):
+            return {'status':'idle'}
+        classify = review_runtime.classify_sol if backfill else review_runtime.classify
         result = runner(packet,base) if runner else classify(INSTRUCTION+'\n'+json.dumps(classifier_packet(packet),ensure_ascii=False,separators=(',',':')),base)
         from hakimi.curation.review_runtime import reviewer_metadata
         review_metadata=reviewer_metadata(result)
@@ -308,12 +337,20 @@ def tick(base, now=None, *, runner=None):
         raw = accepted
         with index.db() as db:
             db.execute('BEGIN IMMEDIATE')
+            if backfill and not review_backfill.current(db,backfill):
+                return {'status':'idle'}
+            if not backfill and not db.execute("""SELECT 1 FROM reply_review_windows
+                WHERE id=? AND status='processing' AND updated_at=?""", (window['id'],now)).fetchone():
+                return {'status':'idle'}
+            if backfill and packet['messages']:
+                db.execute("UPDATE review_recovery_jobs SET target=? WHERE kind='window' AND job=?",
+                           (str(packet['messages'][0]['author']),window['id']))
             for item in raw:
                 p=allowed[item['event_id']]
                 job={'session':p['session'],'target':str(p['author']),'record_id':None,
                      'original_id':None,'noted_at':p['at'],'review_source':'window','review_job':window['id']}
                 job.update(review_metadata)
-                impression_events.apply(db,job,None,item,review_at,direction=p)
+                impression_events.apply(db,job,None,item,now,direction=p)
             for reason in rejected:
                 review_audit.record(db,review_at,job=window['id'],source='window',outcome='skip',
                                     reason=reason,error_code=error_code(ValueError(reason)),details=review_metadata)
@@ -322,14 +359,27 @@ def tick(base, now=None, *, runner=None):
                     review_audit.record(db,review_at,job=window['id'],source='window',event_id=p['id'],message_id=p['message_id'],outcome='not_selected',reason='no representative relationship event selected',details=review_metadata)
             db.execute("UPDATE reply_review_windows SET status='done',updated_at=? WHERE id=?", (now,window['id']))
             review_recovery.complete_metadata(db,'window',window['id'],now)
+            if backfill:
+                review_backfill.finish(db,backfill)
+            elif not recovery:
+                review_backfill.grant(db,base)
             _prune(db,now)
         return {'status':'completed','reviewed':len(raw),'ignored_sources':len(rejected),'window':window['id']}
     except Exception as exc:
+        claimed_at=now
         now=time.time() if real_time else now
         code=error_code(exc);attempt=window['attempts']
         with index.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if backfill:
+                if not review_backfill.current(db,backfill):
+                    return {'status':'idle'}
+            elif not db.execute("""SELECT 1 FROM reply_review_windows
+                WHERE id=? AND status='processing' AND updated_at=?""", (window['id'],claimed_at)).fetchone():
+                return {'status':'idle'}
             review_audit.record(db,now,job=window['id'],source='window',outcome='error',error_code=code)
-            db.execute('UPDATE reply_review_windows SET status=?,attempts=attempts+1,next_attempt=?,updated_at=?,error_code=? WHERE id=?',
-                       ('error' if attempt>=3 else 'retry',now+(30,120,300,300)[min(attempt,3)],now,code,window['id']))
+            if not backfill:
+                db.execute('UPDATE reply_review_windows SET status=?,attempts=attempts+1,next_attempt=?,updated_at=?,error_code=? WHERE id=?',
+                           ('error' if attempt>=3 else 'retry',now+(30,120,300,300)[min(attempt,3)],now,code,window['id']))
             _prune(db,now)
         return {'status':'error','reason':code,'window':window['id']}
